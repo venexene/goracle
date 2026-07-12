@@ -16,7 +16,7 @@
 
     Фундамент: алгоритмы и структуры данных, конкурентность, компьютерные сети и системы.
 
-    [:material-arrow-right: Computer Science](computer-science.md)
+    [:material-arrow-right: Computer Science](computer-science/index.md)
 
 - :material-chess-queen:{ .lg .middle } **Архитектура и дизайн**
 
@@ -24,7 +24,7 @@
 
     SOLID в Go, ООП без классов, чистая и микросервисная архитектура — как проектировать код, который живёт долго.
 
-    [:material-arrow-right: Архитектура и дизайн](architecture.md)
+    [:material-arrow-right: Архитектура и дизайн](architecture/index.md)
 
 - :material-code-braces:{ .lg .middle } **Детали языка**
 
@@ -32,7 +32,7 @@
 
     Типы данных, массивы и срезы, мапы, строки, интерфейсы и каналы — от синтаксиса до внутреннего устройства.
 
-    [:material-arrow-right: Детали языка](language.md)
+    [:material-arrow-right: Детали языка](language/index.md)
 
 - :material-memory:{ .lg .middle } **Устройство Go**
 
@@ -40,7 +40,7 @@
 
     Глубокое погружение в рантайм: планировщик (GMP-модель), управление памятью, escape-анализ и трёхцветный сборщик мусора.
 
-    [:material-arrow-right: Устройство Go](internals.md)
+    [:material-arrow-right: Устройство Go](internals/index.md)
 
 </div>
 
