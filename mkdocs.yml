@@ -68,17 +68,25 @@ plugins:
 
 nav:
   - Главная: index.md
-  - Go Fundamentals:
-      - Планировщик Go: GoFundamentals/Планировщик Go/index.md
-      - Память в Go: GoFundamentals/Память в Go/index.md
-      - Escape Analysis: GoFundamentals/Escape Analysis в Go/index.md
-      - Сборщик мусора: GoFundamentals/Сбощик мусора в Go/index.md
-  - Общие темы:
+  - Computer Science:
       - Алгоритмы и структуры данных: General/Алгоритмы и структуры данных/index.md
+      - Параллельность и конкурентность: General/Параллельность и конкрентность/index.md
+      - Компьютерные сети: General/Компьютерные сети/index.md
+      - Компьютерные системы: General/Компьютерные системы/index.md
+  - Архитектура и дизайн:
       - Принципы программирования: General/Принципы программирования/Принципы программирования.md
       - ООП в Go: General/ООП/index.md
       - Чистая архитектура: General/Чистая архитектура/index.md
       - Микросервисная архитектура: General/Микросервисная архитектура/index.md
-      - Параллельность и конкурентность: General/Параллельность и конкрентность/index.md
-      - Компьютерные сети: General/Компьютерные сети/index.md
-      - Компьютерные системы: General/Компьютерные системы/index.md
+  - Детали языка:
+      - Типы данных: Details/Типы данных в Go/Типы данных в Go.md
+      - Массивы и срезы: Details/Массивы и срезы в Go /index.md
+      - Мапы: Details/Мапы в Go/index.md
+      - Строки: Details/Строки в Go/index.md
+      - Интерфейсы: Details/Интерфейсы в Go/index.md
+      - Каналы: Details/Каналы в Go/index.md
+  - Устройство Go:
+      - Планировщик Go: GoFundamentals/Планировщик Go/index.md
+      - Память в Go: GoFundamentals/Память в Go/index.md
+      - Escape Analysis: GoFundamentals/Escape Analysis в Go/index.md
+      - Сборщик мусора: GoFundamentals/Сбощик мусора в Go/index.md
