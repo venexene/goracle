@@ -1,0 +1,84 @@
+site_name: Goracle
+site_description: 'Открытая база знаний по внутреннему устройству Go — от планировщика до архитектурных паттернов'
+site_author: '@venexene'
+repo_url: https://github.com/venexene/goracle
+edit_uri: edit/main/
+site_dir: site
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Тёмная тема
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Светлая тема
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - pymdownx.details
+  - md_in_html
+  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - footnotes
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - javascripts/katex.js
+  - https://unpkg.com/katex@0/dist/katex.min.js
+  - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
+
+extra_css:
+  - https://unpkg.com/katex@0/dist/katex.min.css
+
+plugins:
+  - search:
+      lang: ru
+
+nav:
+  - Главная: index.md
+  - Go Fundamentals:
+      - Планировщик Go: GoFundamentals/Планировщик Go/index.md
+      - Память в Go: GoFundamentals/Память в Go/index.md
+      - Escape Analysis: GoFundamentals/Escape Analysis в Go/index.md
+      - Сборщик мусора: GoFundamentals/Сбощик мусора в Go/index.md
+  - Общие темы:
+      - Алгоритмы и структуры данных: General/Алгоритмы и структуры данных/index.md
+      - Принципы программирования: General/Принципы программирования/Принципы программирования.md
+      - ООП в Go: General/ООП/index.md
+      - Чистая архитектура: General/Чистая архитектура/index.md
+      - Микросервисная архитектура: General/Микросервисная архитектура/index.md
+      - Параллельность и конкурентность: General/Параллельность и конкрентность/index.md
+      - Компьютерные сети: General/Компьютерные сети/index.md
+      - Компьютерные системы: General/Компьютерные системы/index.md
