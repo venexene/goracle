@@ -25,8 +25,11 @@ theme:
     - navigation.instant
     - navigation.tracking
     - navigation.tabs
-    - navigation.indexes
     - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
     - search.suggest
     - search.highlight
     - content.code.copy
