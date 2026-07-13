@@ -1677,12 +1677,12 @@ trace.Stop()
 
 **Ссылки:**
 
-[\[https://habr.com/ru/articles/981844/\]{.underline}](https://habr.com/ru/articles/981844/)
+[habr.com](https://habr.com/ru/articles/981844/)
 
-[\[https://habr.com/ru/companies/timeweb/articles/1000232/\]{.underline}](https://habr.com/ru/companies/timeweb/articles/1000232/)
+[habr.com](https://habr.com/ru/companies/timeweb/articles/1000232/)
 
-[\[https://nghiant3223.github.io/2025/05/29/fundamental\_of\_virtual\_memory.html\]{.underline}](https://nghiant3223.github.io/2025/05/29/fundamental_of_virtual_memory.html)
+[nghiant3223.github.io](https://nghiant3223.github.io/2025/05/29/fundamental_of_virtual_memory.html)
 
-[\[https://nghiant3223.github.io/2025/06/03/memory\_allocation\_in\_go.html\]{.underline}](https://nghiant3223.github.io/2025/06/03/memory_allocation_in_go.html)
+[nghiant3223.github.io](https://nghiant3223.github.io/2025/06/03/memory_allocation_in_go.html)
 
-[\[https://habr.com/ru/companies/oleg-bunin/articles/676332/\]{.underline}](https://habr.com/ru/companies/oleg-bunin/articles/676332/)
+[habr.com](https://habr.com/ru/companies/oleg-bunin/articles/676332/)

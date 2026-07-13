@@ -312,4 +312,4 @@ Open-coded defer эффективен в небольших функциях с 
 
 **Ссылки:**
 
-https://victoriametrics.com/blog/defer-in-go/
+[VictoriaMetrics: Defer in Go](https://victoriametrics.com/blog/defer-in-go/)

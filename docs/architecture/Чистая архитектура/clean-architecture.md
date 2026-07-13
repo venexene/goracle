@@ -851,8 +851,8 @@ func (r *PostgresOrderRepo) FindByUserID(ctx context.Context, userID string) ([]
 
 > **Зачем это Go-разработчику.** Связка `sqlx` + доменные структуры — золотая середина экосистемы Go. Вы получаете полный контроль над SQL (а значит, над индексами и планами запросов), избавляетесь от boilerplate `Scan()` и сохраняете домен чистым. В отличие от ORM, миграция с sqlx на другой подход (и обратно) — это замена нескольких строк в адаптере, а не переписывание всего кода.
 
-* https://habr.com/ru/articles/269589/
-* https://habr.com/ru/articles/269893/
+* [Чистая архитектура: Хабр, часть 1](https://habr.com/ru/articles/269589/)
+* [Чистая архитектура: Хабр, часть 2](https://habr.com/ru/articles/269893/)
 * https://habr.com/ru/articles/270351/
 * https://habr.com/ru/articles/271157/
 * https://pcnews.ru/blogs/%5Bperevod%5D\_ot\_wtf\_koda\_k\_cistoj\_arhitekture-1200728.html#gsc.tab=0

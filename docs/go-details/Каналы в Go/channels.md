@@ -602,6 +602,6 @@ func main() {
 
 ## 11. Ссылки
 
-* https://habr.com/ru/companies/oleg-bunin/articles/522742/
-* https://go101.org/article/channel.html
-* https://www.youtube.com/watch?v=ZTJcaP4G4JM
+* [Хабр: Внутреннее устройство каналов в Go](https://habr.com/ru/companies/oleg-bunin/articles/522742/)
+* [Go 101: Channels in Go](https://go101.org/article/channel.html)
+* [GopherCon: Understanding Channels](https://www.youtube.com/watch?v=ZTJcaP4G4JM)

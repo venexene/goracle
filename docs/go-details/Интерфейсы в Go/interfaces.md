@@ -272,7 +272,12 @@ func main() {
 
 ### Структура iface
 
-![](assets/cCaUxnTSBVE7aQXegnjC_GZxDIiJeDcWWkR30cbH6-8=.png)
+```go
+type iface struct {
+    tab  *itab
+    data unsafe.Pointer
+}
+```)
 
 * **`tab *itab`** — указатель на **таблицу интерфейса (itable)**, которая содержит информацию о типе и методах, необходимых для реализации интерфейса. Эта таблица помогает Go определить, какие методы доступны для данного интерфейсного значения и как их вызывать.
 * **`data unsafe.Pointer`** — указатель на конкретные данные или значение, которые реализуют интерфейс. Использование `unsafe.Pointer` позволяет интерфейсу ссылаться на данные произвольного типа, сохраняя при этом информацию о том, как к ним обращаться через `itab`.
@@ -281,7 +286,13 @@ func main() {
 
 ### Структура itab
 
-![](assets/6jE1-h8DADQWMhPadsu-XDjRhCnajSdlLYdx3MBzqpE=.png)
+```go
+type itab struct {
+    inter *interfacetype
+    _type *_type
+    fun   [1]uintptr
+}
+```)
 
 * **`inter *interfacetype`** — метаданные интерфейса.
 * **`_type *_type`** — указатель на информацию о конкретном типе, который реализует интерфейс. Это позволяет Go знать, как обращаться с данными, которые реализуют интерфейс.
@@ -293,7 +304,12 @@ func main() {
 
 В Go пустой интерфейс реализован структурой `eface`:
 
-![](assets/vH1_YATOG0x_c3pEsFg_kTGbFu5zfDh3splxNoNtZxw=.png)
+```go
+type eface struct {
+    _type *_type
+    data  unsafe.Pointer
+}
+```)
 
 `eface` проще, чем `iface`: в нём нет `itab`, поскольку нет методов для диспетчеризации. Остаются только указатель на информацию о типе и указатель на данные:
 
