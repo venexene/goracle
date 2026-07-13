@@ -533,5 +533,5 @@ flowchart TD
 * **Бертран Майер.** «Object-Oriented Software Construction» — первоисточник принципа OCP.
 * **Крэг Ларман.** «Applying UML and Patterns» — подробный разбор GRASP.
 * **Эрик Гамма, Ричард Хелм, Ральф Джонсон, Джон Влиссидес.** «Design Patterns» (GoF) — классические паттерны проектирования.
-* **Go Blog:&#x20;****[Effective Go](https://go.dev/doc/effective_go)** — идиоматичный Go и лучшие практики.
-* **Go Wiki:&#x20;****[CodeReviewComments](https://go.dev/wiki/CodeReviewComments)** — принятые в сообществе Go-рекомендации по ревью кода.
+* **Go Blog: ****[Effective Go](https://go.dev/doc/effective_go)** — идиоматичный Go и лучшие практики.
+* **Go Wiki: ****[CodeReviewComments](https://go.dev/wiki/CodeReviewComments)** — принятые в сообществе Go-рекомендации по ревью кода.
