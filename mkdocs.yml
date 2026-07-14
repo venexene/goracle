@@ -98,6 +98,7 @@ nav:
       - Замыкания: go-details/Замыкания в Go/closures.md
       - Ошибки: go-details/Ошибки в Go/errors.md
       - Контекст: go-details/Контекст в Go/context.md
+      - Синхронизация: go-details/Синхронизация в Go/synchronization.md
       - Дженерики: go-details/Дженерики в Go/generics.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
