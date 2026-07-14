@@ -32,7 +32,7 @@
 
     Типы, коллекции, управление потоком, ошибки, дженерики — от синтаксиса до внутреннего устройства.
 
-    [:material-arrow-right: Детали языка](language/index.md)
+    [:material-arrow-right: Детали языка](go-details/index.md)
 
 - :material-memory:{ .lg .middle } **Устройство Go**
 
@@ -40,7 +40,7 @@
 
     Глубокое погружение в рантайм: планировщик (GMP-модель), управление памятью, escape-анализ и трёхцветный сборщик мусора.
 
-    [:material-arrow-right: Устройство Go](internals/index.md)
+    [:material-arrow-right: Устройство Go](go-fundamentals/index.md)
 
 </div>
 

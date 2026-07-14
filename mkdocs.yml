@@ -76,6 +76,7 @@ nav:
       - Обзор: computer-science/index.md
       - Алгоритмы и структуры данных: computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md
       - Параллельность и конкурентность: computer-science/Параллельность и конкрентность/concurrency.md
+      - Конкурентные паттерны: computer-science/Конкурентные паттерны в Go/concurrency-patterns.md
       - Компьютерные сети: computer-science/Компьютерные сети/computer-networks.md
       - Компьютерные системы: computer-science/Компьютерные системы/computer-systems.md
   - Архитектура и дизайн:
@@ -85,7 +86,7 @@ nav:
       - Чистая архитектура: architecture/Чистая архитектура/clean-architecture.md
       - Микросервисная архитектура: architecture/Микросервисная архитектура/microservices.md
   - Детали языка:
-      - Обзор: language/index.md
+      - Обзор: go-details/index.md
       - Типы данных: go-details/Типы данных в Go/types.md
       - Массивы и срезы: go-details/Массивы и срезы в Go/arrays-and-slices.md
       - Мапы: go-details/Мапы в Go/maps.md
@@ -98,7 +99,7 @@ nav:
       - Контекст: go-details/Контекст в Go/context.md
       - Дженерики: go-details/Дженерики в Go/generics.md
   - Устройство Go:
-      - Обзор: internals/index.md
+      - Обзор: go-fundamentals/index.md
       - Планировщик Go: go-fundamentals/Планировщик Go/scheduler.md
       - Память в Go: go-fundamentals/Память в Go/memory.md
       - Escape Analysis: go-fundamentals/Escape Analysis в Go/escape-analysis.md
