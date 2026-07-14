@@ -85,6 +85,7 @@ nav:
       - ООП в Go: architecture/ООП/oop.md
       - Чистая архитектура: architecture/Чистая архитектура/clean-architecture.md
       - Микросервисная архитектура: architecture/Микросервисная архитектура/microservices.md
+      - gRPC: architecture/gRPC/index.md
   - Детали языка:
       - Обзор: go-details/index.md
       - Типы данных: go-details/Типы данных в Go/types.md
