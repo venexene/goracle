@@ -53,7 +53,8 @@
 | Тема | О чём |
 |---|---|
 | [Алгоритмы и структуры данных](computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md) | Big O, массивы, списки, деревья, хэш-таблицы, жадные алгоритмы, DP |
-| [Параллельность и конкурентность](computer-science/Параллельность и конкрентность/concurrency.md) | Горутины, каналы, примитивы синхронизации, data races, паттерны |
+| [Параллельность и конкурентность](computer-science/Параллельность и конкрентность/concurrency.md) | Горутины, каналы, примитивы синхронизации, data races, модель памяти |
+| [Конкурентные паттерны](computer-science/Конкурентные паттерны в Go/concurrency-patterns.md) | Worker Pool, Fan-in, Fan-out, Pipeline, Cancellation — практические рецепты |
 | [Компьютерные сети](computer-science/Компьютерные сети/computer-networks.md) | OSI, TCP/IP, HTTP, gRPC — сетевой фундамент для бэкенд-разработчика |
 | [Компьютерные системы](computer-science/Компьютерные системы/computer-systems.md) | Процессор, память, ОС, прерывания — как железо выполняет ваш код |
 
