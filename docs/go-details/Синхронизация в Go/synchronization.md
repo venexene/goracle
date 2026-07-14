@@ -276,7 +276,7 @@ for {
 
 1. **Помеченные указатели / номера версий** — добавить счётчик версий, который увеличивается при каждом изменении:
 
-   ```go
+```go
 type TaggedPointer struct {
     ptr     unsafe.Pointer
     version uintptr
