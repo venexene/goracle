@@ -82,6 +82,7 @@
 | [Замыкания](go-details/Замыкания в Go/closures.md) | Захват переменных, фабрики функций, состояние в замыканиях |
 | [Ошибки](go-details/Ошибки в Go/errors.md) | Интерфейс error, wrapping, errors.Is/As, кастомные ошибки |
 | [Контекст](go-details/Контекст в Go/context.md) | Background, WithCancel/Timeout, Value, внутреннее устройство |
+| [Синхронизация](go-details/Синхронизация в Go/synchronization.md) | Mutex, RWMutex, WaitGroup, atomic, Cond, Pool, Map, каналы как примитивы |
 | [Дженерики](go-details/Дженерики в Go/generics.md) | Ти́повые параметры, constraints, вывод типов, интерфейсы как типы |
 
 ### :material-memory: Устройство Go

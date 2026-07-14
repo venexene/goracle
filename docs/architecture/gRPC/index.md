@@ -1090,23 +1090,45 @@ func AuthInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo,
 }
 ```
 
-![](assets/pztJf7NdFbU_dS0q1Dw5qxr5oTpTBXPm-v83cxSw1Ts=.png)
-
 ### Клиентский унарный перехватчик
 
 Получает контекст, имя метода, запрос, ответ, объект соединения и функцию-инвокер. До вызова инвокера можно добавить метаданные (токен), после — обработать ошибку или реализовать повторные попытки.
 
-![](assets/7KnhclMfQMGjAXIbM-ger5hjLhUigXYIKBB2aYHrMYk=.png)
+```go
+func RetryUnaryInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryUnaryServerInterceptor) {
+    maxRetries := 3
+    for attempt := 0; attempt < maxRetries; attempt++ {
+      err := invoker(ctx, method, req, reply, cc, opts...)
+      if err == nil || !isRetryable(err) {
+        return err
+      }
+      fmt.Printf("Retrying %s, attempt %d after error: %v\n", method, attempt+1, err)
+    }
+    return invoker(ctx, method, req, reply, cc, opts...)
+}
 
-![](assets/ZAFegpPED0bx8WUpMxVvD6XygA1BrqLpNHeQS_7AN6Q=.png)
+func isRetryable(err error) bool {
+    code := status.Code(err)
+    return code == codes.Unavailable || code == codes.DeadlineExceeded
+}
+```
 
 ### Клиентский потоковый перехватчик
 
 Работает с интерфейсом `ClientStream`, оборачивая стрим для перехвата отправки и получения сообщений.
 
-![](assets/n_oIioXTCUX4dRBR03r05XJc9B4vHYil2kWOYrM1gys=.png)
+```go
+func TimeoutStreamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, stream *grpc.Stream, cancel <-context.WithTimeout(ctx, 5*time.Second)
+  defer cancel()
 
-![](assets/WON75pguisx5VF4l0FA_x1rmn_81IlK98OwABfXhnfo=.png)
+  stream, err := streamer(timeoutCtx, desc, cc, method, opts...)
+  if err != nil {
+    return nil, fmt.Errorf("failed to create %s stream: %w", desc.StreamName, err)
+  }
+
+  return stream, nil
+}
+```
 
 ### Цепочки перехватчиков
 
@@ -1144,7 +1166,29 @@ func AuthInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo,
 
 `net/rpc` не связан с gRPC и не использует HTTP/2 или Protobuf. Тем не менее, он демонстрирует идею RPC минимальными средствами.
 
-![](assets/u42XHCaAeoTDSiJxQOOAc00QBoJNTUX1T4kdqzz50mA=.png)
+```go
+// Service is the struct defining the service.
+type Service struct{}
+
+// Hello is the method exposed to RPC clients.
+func (h *Service) Hello(request string, reply *string) error {
+    *reply = "Hello, " + request + "!"
+    return nil
+}
+
+func main() {
+    _ = rpc.Register(new(Service))
+
+    listener, _ := net.Listen("tcp", ":8080")
+    defer listener.Close()
+
+    // Accept connections and serve them in separate goroutines.
+    for {
+    conn, _ := listener.Accept()
+    go rpc.ServeConn(conn)
+    }
+}
+```
 
 Требования к сервису и его методам:
 
@@ -1155,7 +1199,9 @@ func AuthInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo,
 
 Сигнатура допустимого RPC-метода:
 
-![](assets/EIH_A3CxtefCsXlxQDOMupF2CjMn3IaVy3eaMTWvWCE=.png)
+```go
+func (t *Type) MethodName(argType Argument, replyType *Reply) error
+```
 
 ### Кодирование gob
 
@@ -1163,7 +1209,22 @@ func AuthInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo,
 
 ### Создание клиента
 
-![](assets/J0PQwH7C1eW38Ij8bZi0XMeOVQhj5hd3runEP3g9prE=.png)
+```go
+func main() {
+    // Connect to the server at Localhost:8080.
+    client, _ := rpc.Dial("tcp", "localhost:8080")
+    defer client.Close()
+
+    // Make a remote call to the Service.Hello method.
+    var reply string
+    _ = client.Call("Service.Hello", "World", &reply)
+
+    fmt.Println(reply)
+}
+
+// Output:
+// Hello, World!
+```
 
 Детали процесса:
 
@@ -1189,19 +1250,43 @@ func AuthInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo,
 
 `net/rpc` поддерживает замену кодека, включая встроенный JSON:
 
-![](assets/EjU9L6MrMIqJur8ZoD8_OhmWhnb68Gap6ASdlK1waqs=.png)
+```go
+// Server
+go rpc.ServeCodec(jsonrpc.NewServerCodec(conn))
+
+// Client
+conn, _ := net.Dial("tcp", "localhost:8080")
+defer conn.Close()
+client := rpc.NewClientWithCodec(jsonrpc.NewClientCodec(conn))
+```
 
 `rpc.ServeCodec` позволяет указать собственный кодек — в данном случае JSON. Пример запроса:
 
-![](assets/uufr4z3Ej-1MeybeF3yM47LRMAb087FD5lZyY-QVofk=.png)
+```
+{
+  "method": "Service.Hello", "params": ["World"], "id": {}
+}
+```
 
 Пример ответа:
 
-![](assets/HCHJxUK2EWHk7shtiXVVmpqHjqLiIcWFpblWY04I5D0=.png)
+```
+{
+  "id": 0,
+  "result": "Hello, World!",
+  "error": null
+}
+```
 
 Пример ошибки (несуществующий метод):
 
-![](assets/23-HrgqwLCIvLduDlSt35Ht1sG6M-g3enEQcJvuUG28=.png)
+```
+{
+    "id": 0,
+    "result": null,
+    "error": "rpc: can't find service Service.HelloFake"
+}
+```
 
 > **Зачем это Go-разработчику.** `net/rpc` — компактный способ понять идею RPC без внешних зависимостей. Понимание сигнатуры RPC-метода (два аргумента, error) полезно, так как gRPC наследует эту модель. В production-проектах `net/rpc` практически не используется — для современных приложений gRPC является стандартным выбором.
 

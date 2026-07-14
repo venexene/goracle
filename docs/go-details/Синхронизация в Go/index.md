@@ -282,7 +282,6 @@ type TaggedPointer struct {
     version uintptr
 }
 ```
-
 2. **Указатели опасности (hazard pointers)** — потоки публикуют указатели, которые используют; другие потоки проверяют их перед освобождением памяти.
 3. **Освобождение на основе эпох (epoch-based reclamation)** — память освобождается только когда все потоки покинут эпоху.
 
@@ -398,19 +397,7 @@ sema играет роль точки рандеву, через которую 
 В функции mutex.Lock есть два пути: **быстрый путь** для обычного случая
 и **медленный путь** для обработки необычного случая.
 
-```go
-func (m *Mutex) Lock() {
-    // Fast path: grab unlocked mutex.
-    if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
-    if race.Enabled {
-    race.Acquire(unsafe.Pointer(m))
-    }
-    return
-    }
-    // Slow path (outlined so that the fast path can be inlined)
-    m.lockslow()
-}
-```
+![](assets/naDyie8sQqCBYGxnLcQB5P68o7WxiOurcesCe9xy7qo=.png)
 
 **Быстрый путь** — это попытка захватить мьютекс без ожидания, одной
 атомарной операцией. Если это удаётся — отлично, функция Lock()
@@ -421,12 +408,7 @@ func (m *Mutex) Lock() {
 используется. Этот путь также является встраиваемым, то есть он встроен
 непосредственно в вызывающую функцию:
 
-```
-$ go build -gcflags="-m"
-
-./main.go:13:12: inlining call to sync.(*Mutex).Lock
-./main.go:15:14: inlining call to sync.(*Mutex).Unlock
-```
+![](assets/7lQDn2h6gOHvwfOKhAWtBBZkhYgI_JaNue0CFroSR28=.png)
 
 К сведению, этот встроенный быстрый путь — это интересный трюк,
 использующий оптимизацию встраивания кода Go, и он часто используется в
@@ -936,20 +918,7 @@ type WaitGroup struct {
 
 #### Go 1.5: state1 \[12]byte
 
-```go
-type WaitGroup struct {
-    state1 [12]byte
-    sema uint32
-}
-
-func (wg *WaitGroup) state() *uint64 {
-    if uintptr(unsafe.Pointer(&wg.state1))%8 == 0 {
-    return (*uint64)(unsafe.Pointer(&wg.state1))
-    } else {
-    return (*uint64)(unsafe.Pointer(&wg.state1[4]))
-    }
-}
-```
+![](assets/-gGUXMtBlBqINkeLLWchmn39UAJh-sL9AG03zOlC7YA=.png)
 
 Вместо прямого использования типа uint64 для состояния, WaitGroup
 выделяет **12 байт в массиве (state1 \[12]byte)**. Это может показаться
@@ -1243,14 +1212,7 @@ func main() {
 горутин не заполнят значения своих элементов в массиве values. Вот один
 из возможных результатов:
 
-```
-Done: 4
-Done: 1
-Done: 3
-Done: 0
-Done: 2
-values: [71 89 50 62 60]
-```
+![](assets/UKtK19giS4I7AhBxx4gFut2kuH7d2XqB5yfvDTxsCs4=.png)
 
 В приведенном выше примере единственный вызов метода Add можно разделить
 на несколько отдельных вызовов.
@@ -1684,12 +1646,7 @@ atomic.Pointer\[poolChainElt]**.
 элементы из начала очереди, в то время как несколько потребителей могут
 брать элементы из конца.
 
-```go
-type poolDequeue struct {
-    headTail atomic.Uint64
-    vals []eface
-}
-```
+![](assets/kw37RYyIOD4nj-gGYVI5HjRQanZBRTeKcI2bOaZI5Rw=.png)
 
 Производитель (который в данный момент является P) может добавлять новые
 элементы в начало очереди или брать элементы из неё.
@@ -2003,27 +1960,7 @@ sync.Pool в вашем приложении.
 2. Эти объекты не удаляются сразу, они пока хранятся в этой области жертвы.
 3. Тем временем объекты, которые уже находились в области жертвы с предыдущего цикла GC, полностью удаляются во время текущего цикла GC.
 
-```go
-func poolcleanup() {
-    // Drop victim caches from all pools.
-    for _, p := range oldPools {
-    p.victim = nil
-    p.victimSize = 0
-    }
-
-    // Move primary cache to victim cache.
-    for _, p := range allPools {
-    p.victim = p.local
-    p.victimSize = p.localSize
-    p.local = nil
-    p.localSize = 0
-    }
-
-    // The pools with non-empty primary caches now have non-empty
-    // victim caches and no pools have primary caches.
-    oldPools, allPools = allPools, nil
-}
-```
+![](assets/GwVbAA6mE-u04lHVhBo2s6Jc57kxwDrJmPNGhjXhet4=.png)
 
 Причина использования **механизма жертвы** в sync.Pool заключается в
 предотвращении внезапного и полного опустошения пула сразу после цикла
@@ -2173,24 +2110,7 @@ func (c *Cond) Wait() {
 }
 ```
 
-```go
-func (c *Cond) Wait() {
-    // Check if Cond has been copied
-    c.checker.check()
-
-    // Get the ticket number
-    t := runtime_notifyListAdd(&c.notify)
-
-    // Unlock the mutex
-    c.L.Unlock()
-
-    // Suspend the goroutine until being woken up
-    runtime_notifyListWait(&c.notify, t)
-
-    // Re-Lock the mutex
-    c.L.Lock()
-}
-```
+![](assets/pOj23GthHDc6XGKUJuhKwBopJxdWH-OxzN6HPVUoO8A=.png)
 
 Несмотря на простоту, можно выделить 4 основных момента:
 
@@ -2616,14 +2536,7 @@ sync.Mutex или sync.RWMutex, что приводит к лучшей обще
 sync.Map использует две отдельные **нативные мапы (native map)**:
 read-мапа и грязная мапа.
 
-```go
-type Map struct {
-    mu Mutex
-    read atomic.Pointer[readOnly]
-    dirty map[any]*entry
-    misses int
-}
-```
+![](assets/HH635Tq9EucVVpm8ATyDkfD5g-T36_i41feboio-vN8=.png)
 
 **read-мапа&#x20;**— это место, где происходит быстрый поиск без блокировок.
 
@@ -2661,12 +2574,7 @@ Read-мапа имеет дополнительную функцию: **флаг
 означает, что в грязной мапе есть как минимум одна пара ключ-значение,
 которой еще нет в read-мапе.
 
-```go
-type readOnly struct {
-    m    map[any]*entry
-    amended bool // true if the dirty map contains some key not in m.
-}
-```
+![](assets/7gtEdRo7-f_q3xS2Hel1GKCH1J-mQo_UBfMGK3li9sA=.png)
 
 sync.Map стремится обеспечить высокую скорость и отсутствие блокировок в
 read-мапе, в то время как грязная мапа обрабатывает новые данные,
@@ -2870,21 +2778,7 @@ sync.Map использует более ленивую стратегию, по
 read-мапе. Ключи, уже имевшие статус expunged, в грязную мапу не
 попадают вовсе.
 
-```go
-func (m *Map) dirtyLocked() {
-    if m.dirty != nil {
-        return
-    }
-
-    read := m.loadReadOnly()
-    m.dirty = make(map[any]*entry, len(read.m))
-    for k, e := range read.m {
-        if !e.tryExpungeLocked() { // nil -> expunged
-            m.dirty[k] = e
-        }
-    }
-}
-```
+![](assets/OpCup26w-EmCdekKdvnR3KMCgcwQ1XMykyN6ZGSxxMQ=.png)
 
 ![](assets/cAp94OXHZq4fTdq4fUwPYjMuKXr9B4p4gGWQQftImbU=.png)
 
