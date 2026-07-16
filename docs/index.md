@@ -66,6 +66,7 @@
 | [ООП в Go](architecture/ООП/oop.md) | Структуры, интерфейсы, встраивание, полиморфизм без наследования |
 | [Чистая архитектура](architecture/Чистая архитектура/clean-architecture.md) | Слои, зависимости, репозитории, внедрение зависимостей в Go |
 | [Микросервисная архитектура](architecture/Микросервисная архитектура/microservices.md) | Декомпозиция, коммуникация, базы данных на сервис, Conway's Law |
+| [HTTP](architecture/HTTP/http.md) | HTTP/1.1–HTTP/3 и net/http: сервер, клиент, маршрутизация, конкурентность |
 | [gRPC](architecture/gRPC/index.md) | Protobuf, HTTP/2, серверы, клиенты, стриминг, перехватчики |
 
 ### :material-code-braces: Детали языка
