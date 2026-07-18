@@ -1343,89 +1343,464 @@ func (c *conn) readRequest(ctx context.Context) (w *response, err error) {
 
 ***
 
-## 10. `ServeMux` и маршрутизация (B3)
+## 10. `ServeMux` и маршрутизация
 
-### Паттерны (Go 1.22+)
+`ServeMux` — HTTP-мультиплексор. Он берёт входящий запрос, смотрит на метод, хост и путь, и выбирает обработчик по зарегистрированному паттерну. С Go 1.22 паттерны получили wildcard-синтаксис, что избавило от необходимости во внешних роутерах для большинства задач.
 
-<!-- Синтаксис паттернов: метод + хост + путь, wildcards {name} и {name...}, {$}. Из Go Blog про routing enhancements. -->
-
-```go
-// Примеры регистрации паттернов
-```
-
-### Приоритеты и конфликты
-
-<!-- Как определяется most specific match, что вызывает panic при регистрации. -->
-
-### Trailing-slash редиректы
-
-<!-- Когда и почему ServeMux делает редирект /path → /path/. -->
-
-### Санитизация пути
-
-<!-- CleanPath, удаление . и .., обработка дублированных слешей. -->
-
-> **Зачем это Go-разработчику.** <!-- -->
+`DefaultServeMux` — глобальный экземпляр, используемый пакетными функциями `http.Handle` и `http.HandleFunc`. В продакшене лучше создавать свой через `http.NewServeMux()`.
 
 ***
 
-## 11. `ResponseWriter` и жизненный цикл ответа (B4)
+### Паттерны (Go 1.22+)
+
+Паттерн — строка вида `[METHOD ][HOST]/[PATH]`. Все три части опциональны:
+
+```go
+mux := http.NewServeMux()
+
+// Только путь — любой метод, любой хост
+mux.HandleFunc("/users", listUsers)
+
+// Метод + путь
+mux.HandleFunc("GET /users/{id}", getUser)
+
+// Хост + путь
+mux.HandleFunc("api.example.com/", apiHandler)
+
+// Хост + метод + путь + wildcard
+mux.HandleFunc("POST api.example.com/items/{id}/tags/{tag...}", addTag)
+```
+
+**Wildcards** — сегменты вида `{name}` и `{name...}`:
+- `{name}` — захватывает один сегмент пути (до следующего `/`)
+- `{name...}` — захватывает остаток пути, включая `/` (только в конце паттерна)
+- `{$}` — специальный wildcard, обозначающий конец пути (запрещает `/users/extra` для паттерна `/users/{$}`)
+
+Значения wildcard'ов доступны через `r.PathValue("name")` в обработчике:
+
+```go
+mux.HandleFunc("GET /users/{id}", func(w http.ResponseWriter, r *http.Request) {
+    id := r.PathValue("id")   // "42" для /users/42
+})
+```
+
+Трейлинг-слеш в конце паттерна действует как анонимный `{...}`: `/images/` совпадает с `/images/`, `/images/logo.png`, `/images/icons/small.png`.
+
+```go
+// Регистрация через пакетные функции (DefaultServeMux)
+http.HandleFunc("GET /hello", func(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "hello")
+})
+```
+
+> **Зачем это Go-разработчику.** До 1.22 без внешнего роутера можно было только `/prefix/` и точные пути. Теперь wildcard-паттерны покрывают 90% случаев REST API. `r.PathValue` — встроенная альтернатива `chi.URLParam` или `gin.Param`.
+
+***
+
+### Приоритеты и конфликты
+
+Когда несколько паттернов подходят под запрос, выбирается **наиболее специфичный** (most specific). Правило: паттерн P1 специфичнее P2, если P1 совпадает с подмножеством запросов, которые совпадают с P2.
+
+```
+/images/thumbnails/   специфичнее, чем /images/
+GET /                  специфичнее, чем /
+example.com/           специфичнее, чем / (при совпадении хоста)
+```
+
+Пример без конфликта:
+
+```go
+mux.HandleFunc("/images/", handleImages)              // всё в /images/
+mux.HandleFunc("/images/thumbnails/", handleThumbs)   // только /images/thumbnails/
+// OK: /images/thumbnails/* идёт в handleThumbs, остальное в handleImages
+```
+
+Если два паттерна не являются подмножеством друг друга, они **конфликтуют** — `Handle`/`HandleFunc` вызывает panic при регистрации:
+
+```go
+mux.HandleFunc("GET /", handleGet)       // паникует!
+mux.HandleFunc("/index.html", handleIdx) // конфликт: оба подходят под GET /index.html
+```
+
+Исключение для обратной совместимости: если конфликтуют паттерн с хостом и без хоста, паттерн **с хостом** приоритетнее без паники.
+
+> **Зачем это Go-разработчику.** Конфликт паттернов — ошибка, которую `ServeMux` ловит на старте, а не во время выполнения. Это лучше, чем молчаливая отправка запросов не в тот обработчик.
+
+***
+
+### Trailing-slash редиректы
+
+Если зарегистрирован паттерн с трейлинг-слешем или `{...}`, а клиент присылает тот же путь без слеша — `ServeMux` автоматически отвечает `301 Moved Permanently`, добавляя `/`:
+
+```
+GET /images  →  301 →  /images/
+```
+
+Это поведение отключается явной регистрацией паттерна без слеша:
+
+```go
+mux.HandleFunc("/images", handleImagesRoot)  // отдельный обработчик для /images
+mux.HandleFunc("/images/", handleImagesSub)  // для /images/ и глубже
+```
+
+Аналогично, `ServeMux` редиректит `/path/` → `/path`, если зарегистрирован только `/path` (без трейлинг-слеша) и запрос не совпал.
+
+***
+
+### Санитизация пути
+
+`ServeMux` автоматически чистит URL перед маршрутизацией через `path.Clean`:
+
+- Убирает `.` и `..` сегменты: `/users/../photos/./cat` → `/photos/cat`
+- Схлопывает повторные слеши: `//users///42` → `/users/42`
+
+Если путь изменился в результате очистки, сервер отвечает редиректом на очищенный путь. CONNECT-запросы не санитизируются (они передаются как есть).
+
+Экранированные спецсимволы (`%2e` для `.`, `%2f` для `/`) **не считаются** разделителями при санитизации — это защита от обхода путей.
+
+> **Зачем это Go-разработчику.** Санитизация идёт до вашего обработчика. Если вы пишете своё промежуточное ПО для роутинга, помните: `r.URL.Path` может содержать `..` до того, как `ServeMux` его почистит. Используйте `path.Clean` явно.
+
+> **Зачем это Go-разработчику.** `ServeMux` с паттернами Go 1.22+ закрывает потребности большинства REST-приложений без внешних роутеров. Главное ограничение — нет групп маршрутов с общими middleware (как в chi или Gin). Это решается композицией: общий middleware на уровне `Server.Handler`, специфичный — через `http.Handler`-обёртку для группы путей.
+
+***
+
+## 11. `ResponseWriter` и жизненный цикл ответа
+
+`ResponseWriter` — интерфейс, через который обработчик формирует HTTP-ответ. За этим интерфейсом скрыта цепочка из шести слоёв буферизации, Content-Type sniffing, автоматическая чанкированная передача и трейлеры.
+
+***
 
 ### Интерфейс `ResponseWriter`
 
 ```go
-// Определение интерфейса
+type ResponseWriter interface {
+    Header() Header                 // заголовки, которые будут отправлены
+    Write([]byte) (int, error)      // данные тела ответа
+    WriteHeader(statusCode int)     // отправить статус-код и заголовки
+}
 ```
 
-### Шесть слоёв буферизации
+Три метода — и масса автоматического поведения под капотом. Первый вызов `Write` без предварительного `WriteHeader` автоматически отправляет `200 OK`. После `WriteHeader` заголовки уже нельзя изменить (кроме трейлеров).
 
-<!-- response.Write → bufio.Writer → chunkWriter → conn.bufw → checkConnErrorWriter → rwc. Схема из жизни одного Write. -->
-
-### `WriteHeader`
-
-<!-- Когда вызывается явно, когда неявно. 1xx vs 2xx-5xx. Content-Type sniffing. -->
-
-### Трейлеры
-
-<!-- TrailerPrefix, declareTrailer, finalTrailers. -->
-
-### Content-Type sniffing
-
-<!-- DetectContentType, первые 512 байт, mimesniff.spec.whatwg.org. -->
-
-### Flusher и Hijacker
-
-<!-- Интерфейсы и когда нужны. -->
-
-> **Зачем это Go-разработчику.** <!-- -->
+> **Зачем это Go-разработчику.** Порядок важен: `Header().Set` → `WriteHeader` → `Write`. Если вызвать `Set` после `WriteHeader`, заголовок молча проигнорируется. `WriteHeader(201)` после `Write` проигнорируется, потому что `Write` уже вызвал неявный `WriteHeader(200)`.
 
 ***
 
-## 12. HTTP-клиент и `Transport` (B5)
+### Шесть слоёв буферизации
+
+Путь одного байта от `w.Write(data)` до провода описан в `server.go` как «The Life Of A Write»:
+
+```
+Handler вызывает
+    ↓
+1.  response.Write          ← ResponseWriter (ваш код)
+    ↓
+2.  bufio.Writer (4 KB)     ← буфер перед чанк-врайтером
+    ↓
+3.  chunkWriter             ← добавляет чанк-заголовки, финализирует заголовки
+    ↓
+4.  conn.bufw (4 KB)        ← буфер записи соединения
+    ↓
+5.  checkConnErrorWriter    ← перехватывает ошибки записи, закрывает ctx при ошибке
+    ↓
+6.  rwc (net.Conn)          ← сырое TCP-соединение
+```
+
+Зачем столько слоёв:
+- **Слой 2** — буферизует первые несколько KB, чтобы автоматически определить `Content-Length`, если ответ короткий
+- **Слой 3** — если `Content-Length` не задан явно, переключается на chunked encoding, добавляет `Transfer-Encoding: chunked` и разбивает ответ на чанки
+- **Слой 5** — отслеживает ошибки записи (клиент отвалился), вызывает `cancelCtx`, чтобы контекст запроса был отменён
+
+```go
+func (w *response) Write(data []byte) (n int, err error) {
+    if !w.wroteHeader {
+        w.WriteHeader(StatusOK)   // неявный 200 при первом Write
+    }
+    return w.w.Write(data)        // пишем в bufio.Writer
+}
+```
+
+> **Зачем это Go-разработчику.** Шесть слоёв — это цена за автоматический выбор между `Content-Length` и chunked encoding. Не боритесь с системой: если знаете размер ответа заранее, установите `w.Header().Set("Content-Length", strconv.Itoa(len))` до `Write`, и чанки не включатся.
+
+***
+
+### `WriteHeader`: явный и неявный
+
+`WriteHeader` отправляет статус-код и заголовки. Может вызываться явно или неявно:
+
+```go
+// Явно — для ошибок и 201/204
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusCreated)
+    // заголовки уже отправлены
+}
+```
+
+Первый `Write` без явного `WriteHeader` вызывает `WriteHeader(200)` автоматически.
+
+Информационные ответы (`1xx`) можно отправлять многократно:
+
+```go
+w.WriteHeader(http.StatusContinue)        // 100 — промежуточный
+w.WriteHeader(http.StatusProcessing)      // 102 — ещё один промежуточный
+w.WriteHeader(http.StatusOK)              // 200 — финальный
+```
+
+Но финальный (2xx–5xx) — только один. Повторный вызов логируется как предупреждение и игнорируется.
+
+***
+
+### Трейлеры
+
+Трейлеры — заголовки, которые отправляются **после** тела ответа. Используются, когда значение заголовка неизвестно в момент отправки статуса (например, хеш тела при потоковой передаче).
+
+Два способа задать трейлеры:
+
+**1. Предварительное объявление** — через заголовок `Trailer`:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Trailer", "X-Hash")
+    w.WriteHeader(http.StatusOK)
+
+    // пишем тело...
+    w.Write(data)
+
+    // хеш становится известен — задаём трейлер
+    w.Header().Set("X-Hash", fmt.Sprintf("%x", sha256.Sum256(data)))
+}
+```
+
+**2. TrailerPrefix** — для трейлеров, неизвестных до отправки заголовков:
+
+```go
+w.Header().Set("Trailer:X-Hash", "")  // префикс "Trailer:" — ключ будет трейлером
+// ...после WriteHeader и Write...
+w.Header().Set("Trailer:X-Hash", hashValue)
+```
+
+HTTP/2 поддерживает трейлеры полноценно. В HTTP/1.1 они работают только с chunked encoding.
+
+> **Зачем это Go-разработчику.** Трейлеры — редко используемая фича. Основной сценарий: подпись тела ответа или метрики, которые становятся известны после полной отправки. В обычных REST API трейлеры не нужны.
+
+***
+
+### Content-Type sniffing
+
+Если обработчик не установил `Content-Type` явно, сервер **нюхает** первые 512 байт тела через `DetectContentType` и угадывает MIME-тип.
+
+**MIME** (Multipurpose Internet Mail Extensions) — стандарт, изначально созданный для вложений в email, но переиспользованный в HTTP. MIME-тип (он же media type) — строка вида `text/html`, `application/json`, `image/png`, определяющая формат данных. Браузеры и HTTP-клиенты используют его, чтобы понять, как обрабатывать тело ответа: рендерить HTML, парсить JSON или сохранять как файл.
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Write([]byte("<html><body>hello</body></html>"))
+    // Content-Type → text/html; charset=utf-8 (автоматически)
+}
+```
+
+Алгоритм — реализация [mimesniff.spec.whatwg.org](https://mimesniff.spec.whatwg.org/). Если тип не удалось определить — `application/octet-stream`.
+
+Sniffing отключается явной установкой `Content-Type` в `nil`:
+
+```go
+w.Header()["Content-Type"] = nil  // подавить sniffing
+```
+
+> **Зачем это Go-разработчику.** Полагаться на sniffing в API — плохая практика. Всегда устанавливайте `Content-Type` явно: `w.Header().Set("Content-Type", "application/json")`. Sniffing полезен только для `ServeFile`, где тип определяется по расширению файла.
+
+***
+
+### Flusher и Hijacker
+
+Два дополнительных интерфейса, которые `ResponseWriter` может (но не обязан) реализовывать:
+
+**Flusher** — принудительная отправка буферизованных данных клиенту:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/event-stream")
+
+    for _, event := range events {
+        fmt.Fprintf(w, "data: %s\n\n", event)
+        if flusher, ok := w.(http.Flusher); ok {
+            flusher.Flush()  // отправить немедленно, не ждать заполнения буфера
+        }
+    }
+}
+```
+
+Используется для Server-Sent Events, стриминга, long polling. По умолчанию HTTP/1.x и HTTP/2 поддерживают `Flusher`, но обёртки могут его потерять.
+
+**Hijacker** — перехват TCP-соединения:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    hj, ok := w.(http.Hijacker)
+    if !ok {
+        http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+        return
+    }
+    conn, bufrw, err := hj.Hijack()
+    // conn — сырое TCP-соединение
+    // теперь сервер больше не управляет этим соединением
+    go handleWebSocket(conn, bufrw)
+}
+```
+
+После `Hijack()` сервер полностью передаёт соединение. HTTP/2 **не поддерживает** hijacking — только HTTP/1.x.
+
+Современная альтернатива прямому использованию интерфейсов — `ResponseController` (доступен через `http.NewResponseController(w)`), который предоставляет методы `Flush()`, `Hijack()`, `SetReadDeadline`, `SetWriteDeadline`, `EnableFullDuplex` с единообразной обработкой ошибок.
+
+> **Зачем это Go-разработчику.** `Flusher` — основа для SSE и стриминга. `Hijacker` — для WebSocket и других протоколов, работающих поверх TCP. Проверяйте поддержку через type assertion (`w.(http.Flusher)`), потому что middleware-обёртки могут её сломать.
+
+***
+
+## 12. HTTP-клиент и `Transport`
+
+`Client` — высокоуровневый HTTP-клиент: управляет куками, редиректами и таймаутами. `Transport` — низкоуровневый движок: пул TCP-соединений, прокси, TLS. Вместе они проходят путь от `http.Get(url)` до байтов в `Response.Body`.
+
+`DefaultClient` использует `DefaultTransport`. Для продакшена всегда создавайте свой экземпляр с настроенными таймаутами.
+
+***
 
 ### `Client` и его поля
 
 ```go
-// Определение типа Client с ключевыми полями
+type Client struct {
+    Transport     RoundTripper  // механизм отправки запросов (по умолчанию DefaultTransport)
+    CheckRedirect func(req *Request, via []*Request) error
+    Jar           CookieJar     // хранилище кук
+    Timeout       time.Duration // общий таймаут на запрос (включая редиректы и чтение тела)
+}
 ```
+
+`Client` — фасад над `RoundTripper`. `Transport` добавляет куки и редиректы, которых нет в `RoundTrip`. Нулевое значение `&http.Client{}` работоспособно — использует `DefaultTransport`.
+
+> **Зачем это Go-разработчику.** `Client` нужно создавать один раз и переиспользовать. Пул соединений живёт в `Transport` внутри `Client`. Если создавать новый `Client` на каждый запрос — теряется keep-alive, каждый раз открывается новое TCP-соединение.
+
+***
 
 ### `Client.Do` — жизненный цикл запроса
 
-<!-- Что происходит от вызова Do до получения Response: проверка контекста, редиректы, cookie jar. -->
+`Do` выполняет всю механику HTTP-запроса: контекст, редиректы, куки, повтор при сетевых ошибках:
+
+```go
+func (c *Client) Do(req *Request) (*Response, error) {
+    // 1. Таймаут: если c.Timeout > 0, создаём контекст с deadline
+    // 2. Редиректы: до 10 редиректов, изменение метода для 301/302/303
+    // 3. Куки: Jar.Cookies(req.URL) → req.Header; SetCookies после ответа
+    // 4. Transport.RoundTrip(req) → *Response
+    // 5. Ошибка сети — повтор для idempotent методов (GET, HEAD, OPTIONS, TRACE)
+    // 6. Закрытие тела при ошибке редиректа
+}
+```
+
+Ключевые детали:
+
+- **Редиректы.** По умолчанию до 10. 301/302/303 превращают метод в GET, 307/308 сохраняют. `ErrUseLastResponse` останавливает редиректы.
+- **Куки.** `Jar` автоматически добавляет куки перед запросом и извлекает из ответа. Nil-`Jar` — куки только из явного `req.AddCookie`.
+- **Таймаут.** `Client.Timeout` охватывает весь путь: соединение → редиректы → чтение тела. Если истёк — контекст отменяется, `Transport` прерывает соединение.
+
+```go
+client := &http.Client{
+    Timeout: 30 * time.Second,
+    CheckRedirect: func(req *http.Request, via []*http.Request) error {
+        if len(via) >= 5 {
+            return fmt.Errorf("too many redirects")
+        }
+        return nil
+    },
+}
+resp, err := client.Do(req)
+```
+
+> **Зачем это Go-разработчику.** `Client.Timeout` — грубый инструмент: один таймаут на ВСЁ. Если у вас разные эндпоинты с разными ожидаемыми задержками, используйте `context.WithTimeout` на уровне запроса: `req.WithContext(ctx)`. `Client.Timeout` и `context` на запросе работают вместе — сработает тот, что истечёт раньше.
+
+***
 
 ### `Transport` и пул соединений
 
-<!-- MaxIdleConns, MaxIdleConnsPerHost, MaxConnsPerHost. Как кэшируются и переиспользуются соединения. -->
+`Transport` — реализация `RoundTripper`. Это «двигатель» HTTP-клиента: управляет TCP-соединениями, TLS, прокси, сжатием.
+
+```go
+type Transport struct {
+    Proxy                  func(*Request) (*url.URL, error) // прокси
+    DialContext            func(ctx context.Context, network, addr string) (net.Conn, error)
+    TLSClientConfig        *tls.Config
+
+    MaxIdleConns           int           // макс. простаивающих соединений всего (0 = безлимит)
+    MaxIdleConnsPerHost    int           // на один хост (по умолчанию 2)
+    MaxConnsPerHost        int           // всего соединений на хост (активные + простаивающие)
+    IdleConnTimeout        time.Duration // таймаут простаивания (по умолчанию 90s)
+
+    DisableKeepAlives      bool          // true = новое TCP на каждый запрос
+    DisableCompression     bool          // true = не добавлять Accept-Encoding: gzip
+    ResponseHeaderTimeout  time.Duration // таймаут ожидания заголовков ответа
+    ExpectContinueTimeout  time.Duration // таймаут ожидания 100 Continue
+    TLSHandshakeTimeout    time.Duration // таймаут TLS-рукопожатия
+}
+```
+
+**Пул соединений.** `Transport` кэширует TCP-соединения для переиспользования. Когда запрос завершён, соединение не закрывается, а возвращается в пул как «простаивающее» (idle). Следующий запрос к тому же хосту берёт его из пула — без нового TCP-рукопожатия.
+
+```
+Запрос → ищем idle-соединение в пуле
+           ↓ есть? → используем
+           ↓ нет?  → открываем новое (до MaxConnsPerHost)
+                     ↓ если лимит исчерпан — блокируемся
+           ↓
+           RoundTrip завершён → возвращаем соединение в пул
+```
+
+`MaxIdleConnsPerHost` по умолчанию равен **2**. Это мало для приложения, активно работающего с одним хостом — увеличивайте.
+
+> **Зачем это Go-разработчику.** `DefaultTransport.MaxIdleConnsPerHost = 2` — частая причина плохой производительности HTTP-клиента. Если ваше приложение ходит к одному внутреннему сервису сотнями запросов в секунду, поднимите до 50–100. `DisableKeepAlives: true` убивает пул — каждое соединение закрывается после запроса.
+
+***
 
 ### Таймауты
 
-<!-- Из статьи Cloudflare: ReadTimeout, WriteTimeout, ResponseHeaderTimeout, IdleConnTimeout, ExpectContinueTimeout. Как взаимодействуют. -->
+HTTP-клиент имеет многоуровневую систему таймаутов. Они работают вместе, и срабатывает самый короткий:
+
+| Таймаут | Уровень | Что контролирует |
+|---|---|---|
+| `Client.Timeout` | Client | Весь запрос: соединение + редиректы + чтение тела |
+| `context.WithTimeout` | Request | Контекст конкретного запроса |
+| `DialContext` timeout | Transport | Установка TCP-соединения |
+| `TLSHandshakeTimeout` | Transport | TLS-рукопожатие (по умолчанию 10s) |
+| `ResponseHeaderTimeout` | Transport | Ожидание заголовков ответа после отправки запроса |
+| `ExpectContinueTimeout` | Transport | Ожидание `100 Continue` от сервера (по умолчанию 1s) |
+| `IdleConnTimeout` | Transport | Сколько держать простаивающее соединение (по умолчанию 90s) |
+
+Типичная настройка для внутренних сервисов:
 
 ```go
-// Пример настройки таймаутов клиента
+client := &http.Client{
+    Timeout: 30 * time.Second,
+    Transport: &http.Transport{
+        MaxIdleConnsPerHost:   50,
+        IdleConnTimeout:       90 * time.Second,
+        TLSHandshakeTimeout:   5 * time.Second,
+        ResponseHeaderTimeout: 10 * time.Second,
+    },
+}
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Для внешних API таймауты должны быть жёстче:
+
+```go
+client := &http.Client{
+    Timeout: 10 * time.Second,
+    Transport: &http.Transport{
+        TLSHandshakeTimeout:   3 * time.Second,
+        ResponseHeaderTimeout: 5 * time.Second,
+    },
+}
+```
+
+> **Зачем это Go-разработчику.** По умолчанию `http.Client{}` **не имеет таймаутов вообще** — запрос может висеть вечно. Всегда задавайте хотя бы `Client.Timeout`. `IdleConnTimeout` на клиенте должен быть МЕНЬШЕ idle-таймаута на балансировщике/сервере — иначе клиент попытается использовать соединение, которое сервер уже закрыл, и получит `ECONNRESET`.
+
+> **Зачем это Go-разработчику.** `Client` — фасад, `Transport` — двигатель. Всегда переиспользуйте клиент. Настраивайте `MaxIdleConnsPerHost` под свою нагрузку. Никогда не оставляйте клиент без таймаутов — `http.Client{}` не имеет их по умолчанию. Для разных эндпоинтов с разными требованиями используйте `context.WithTimeout` на уровне запроса, а не разные клиенты.
 
 ***
 
