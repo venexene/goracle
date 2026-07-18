@@ -1005,55 +1005,341 @@ http.SetCookie(w, &http.Cookie{
 
 ***
 
-## 8. Обзор пакета `net/http` (B1)
+## 8. Обзор пакета `net/http`
 
-### Карта типов
-
-<!-- Server, Client, Transport, ServeMux, Handler, ResponseWriter, Request — как они связаны. Общая схема: кто кого создаёт, кто кому передаёт. -->
-
-### Интерфейс `Handler`
-
-```go
-// Скопируй определение интерфейса и минимальный пример реализации
-```
-
-### Интерфейс `RoundTripper`
-
-```go
-// Скопируй определение и пример
-```
-
-> **Зачем это Go-разработчику.** <!-- -->
+Пакет `net/http` построен вокруг трёх ключевых абстракций: **обработчик** (`Handler`), **мультиплексор** (`ServeMux`) и **транспорт** (`RoundTripper`/`Transport`). Все остальные типы — `Server`, `Client`, `Request`, `ResponseWriter` — обслуживают эти три.
 
 ***
 
-## 9. HTTP-сервер: от `Accept` до handler'а (B2)
+### Карта типов
+
+На стороне сервера цепочка выглядит так:
+
+```
+net.Listener           ← принимает TCP-соединения
+    ↓
+http.Server            ← настраивает таймауты, TLS, HTTP/2
+    ↓
+http.ServeMux          ← маршрутизирует запрос по паттерну
+    ↓
+http.Handler           ← ваш обработчик (интерфейс с одним методом)
+    ↓
+http.ResponseWriter    ← формирует HTTP-ответ
+```
+
+На стороне клиента:
+
+```
+http.Client            ← управляет куками, редиректами, таймаутами
+    ↓
+http.Transport         ← пул TCP-соединений, прокси, TLS
+    ↓ (реализует http.RoundTripper)
+http.Request           ← сериализуется в HTTP-запрос
+    ↓
+http.Response          ← читается из HTTP-ответа
+```
+
+Ключевое: `Server` и `Client` — это **фасады**. Вся магия в `Transport` (клиент) и `conn.serve` (сервер). `ServeMux` — опциональная прослойка; можно передать любой `Handler` напрямую в `Server.Handler`.
+
+Центральные интерфейсы пакета:
+
+```go
+// Серверная сторона: любой обработчик HTTP
+type Handler interface {
+    ServeHTTP(ResponseWriter, *Request)
+}
+
+// Клиентская сторона: выполнить один HTTP-обмен
+type RoundTripper interface {
+    RoundTrip(*Request) (*Response, error)
+}
+```
+
+`Handler` — это то, что вы пишете. `RoundTripper` — то, что вы обычно не трогаете (работает `DefaultTransport`). Но оба интерфейса — точка расширения: middleware оборачивают `Handler`, кастомные транспорты реализуют `RoundTripper`.
+
+***
+
+### Интерфейс `Handler`
+
+`Handler` — интерфейс с одним методом. Любая функция или тип с методом `ServeHTTP` может быть HTTP-обработчиком.
+
+```go
+type Handler interface {
+    ServeHTTP(w ResponseWriter, r *Request)
+}
+```
+
+Минимальный обработчик — функция, преобразованная через `HandlerFunc`:
+
+```go
+func hello(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "hello")
+}
+
+// HandlerFunc(f) — адаптер, превращающий функцию в Handler
+http.HandleFunc("/hello", hello)
+```
+
+`HandlerFunc` — ключевой адаптер пакета. Это функциональный тип, у которого есть метод, вызывающий сам себя:
+
+```go
+type HandlerFunc func(ResponseWriter, *Request)
+
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+    f(w, r)
+}
+```
+
+**Зачем это нужно.** Проблема: чтобы реализовать `Handler`, нужно объявить тип с методом `ServeHTTP`. Но писать `handler` — это естественно функция, а не тип. `HandlerFunc` — мост между миром функций и миром интерфейсов: берёт функцию с сигнатурой `func(ResponseWriter, *Request)` и «притворяется» `Handler`.
+
+**Как это работает.** В Go можно объявить метод на любом типе, включая функциональный. `HandlerFunc` — это `type HandlerFunc func(...)`. Его метод `ServeHTTP` вызывает сам себя: `f(w, r)`. Когда вы пишете `http.HandlerFunc(myFunc)`, вы преобразуете функцию в значение типа `HandlerFunc`. Когда сервер вызывает `ServeHTTP` на этом значении, срабатывает метод, который дёргает исходную `myFunc`.
+
+**Где используется.** Три места:
+
+1. `http.HandleFunc("/path", handler)` — внутри вызывает `HandlerFunc(handler)`, регистрируя функцию как обработчик
+2. Middleware — чтобы вернуть `http.Handler`, оборачивая замыкание:
+
+```go
+func middleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // pre
+        next.ServeHTTP(w, r)
+        // post
+    })
+}
+```
+
+3. Подстановка обработчика на лету без объявления нового типа
+
+***
+
+### Интерфейс `RoundTripper`
+
+`RoundTripper` — клиентский аналог `Handler`. Выполняет один HTTP-обмен: берёт `*Request`, возвращает `*Response`.
+
+```go
+type RoundTripper interface {
+    RoundTrip(*Request) (*Response, error)
+}
+```
+
+`DefaultTransport` — глобальная переменная, используемая `DefaultClient`. Настроена на keep-alive, прокси из переменных окружения, TLS.
+
+```go
+// DefaultTransport — готовый RoundTripper с пулом соединений
+var DefaultTransport RoundTripper = &Transport{
+    Proxy: ProxyFromEnvironment,
+    MaxIdleConns:          100,
+    IdleConnTimeout:       90 * time.Second,
+    TLSHandshakeTimeout:   10 * time.Second,
+}
+```
+
+`Transport` — стандартная реализация. `Client` оборачивает `RoundTripper`, добавляя куки и редиректы. Если вам не нужны куки/редиректы, можно использовать `Transport.RoundTrip` напрямую.
+
+***
+
+### Взаимодействие типов: полный цикл одного запроса
+
+```
+Клиент                               Сервер
+  |                                    |
+  | http.Get(url)                      |
+  |   ↓                                |
+  | Client.Do(req)                     |
+  |   ↓                                |
+  | Transport.RoundTrip(req)           |
+  |   ↓ (TCP-соединение)              |
+  | --- GET /users HTTP/1.1 ---------> |
+  |                                    | Server.Serve (Accept в цикле)
+  |                                    |   ↓
+  |                                    | conn.serve (горутина)
+  |                                    |   ↓
+  |                                    | readRequest (парсинг)
+  |                                    |   ↓
+  |                                    | ServeMux.Handler (маршрут?)
+  |                                    |   ↓
+  |                                    | handler.ServeHTTP(w, r)
+  |                                    |   ↓
+  | <--- HTTP/1.1 200 OK ------------ | w.Write(body)
+  |   ↓                                |
+  | Transport: response → пул соед.    | conn: keep-alive или close
+```
+
+> **Зачем это Go-разработчику.** Понимание двух интерфейсов — `Handler` и `RoundTripper` — открывает всю архитектуру. Middleware — это `func(http.Handler) http.Handler`. Кастомный HTTP-клиент — своя реализация `RoundTripper`. `httptest` подменяет `RoundTripper` на тестовый. Весь пакет построен на этих двух интерфейсах, остальное — реализации по умолчанию.
+
+***
+
+## 9. HTTP-сервер: от `Accept` до handler'а
+
+Когда вы пишете `http.ListenAndServe(":8080", nil)`, за этой строкой скрывается цепочка: создание TCP-сокета, бесконечный цикл принятия соединений, запуск горутины на каждое соединение, парсинг HTTP-запроса и вызов вашего обработчика. Разберём каждый шаг.
+
+***
 
 ### `ListenAndServe` → `Serve`
 
-<!-- Что происходит при запуске сервера: создание listener'а, вызов Serve. -->
+`ListenAndServe` — это тонкая обёртка над `Server.Serve`. Она создаёт TCP-listener и передаёт его в `Serve`:
+
+```go
+func (s *Server) ListenAndServe() error {
+    addr := s.Addr
+    if addr == "" {
+        addr = ":http"  // порт 80 по умолчанию
+    }
+    ln, err := net.Listen("tcp", addr)
+    if err != nil {
+        return err
+    }
+    return s.Serve(ln)
+}
+```
+
+`net.Listen("tcp", ":8080")` создаёт сокет, привязывает его к порту и начинает слушать. Сам `Serve` уже работает с готовым `net.Listener`.
+
+***
 
 ### Цикл `Accept`
 
-<!-- Как работает Accept в бесконечном цикле, exponential backoff при временных ошибках. -->
+Сердце `Serve` — бесконечный цикл `Accept`. Каждый вызов `l.Accept()` блокируется до прихода нового TCP-соединения:
+
+```go
+func (s *Server) Serve(l net.Listener) error {
+    // ...настройка HTTP/2, базовый контекст...
+
+    for {
+        rw, err := l.Accept()          // блокируется, ждёт клиента
+        if err != nil {
+            if ne, ok := err.(net.Error); ok && ne.Temporary() {
+                // временная ошибка — exponential backoff
+                time.Sleep(tempDelay)
+                continue
+            }
+            return err                  // фатальная ошибка — выход
+        }
+        c := s.newConn(rw)             // оборачиваем TCP-соединение
+        go c.serve(connCtx)            // горутина на каждое соединение!
+    }
+}
+```
+
+Временные ошибки (перегрузка, нехватка файловых дескрипторов) обрабатываются через exponential backoff: 5ms → 10ms → 20ms → ... → capped at 1s.
+
+> **Зачем это Go-разработчику.** Это объясняет, почему сервер не падает при всплеске соединений — он замедляет `Accept`, но не роняет весь процесс. `Temporary()` — признак ошибки, после которой можно продолжать работу.
+
+***
 
 ### `newConn` и `go c.serve()`
 
-<!-- Создание conn, горутина на каждое соединение. Отсюда и дальше — из статей Bendersky. -->
+Каждое TCP-соединение оборачивается в структуру `conn` — приватный тип из `server.go`, хранящий всё состояние одного клиентского подключения:
 
 ```go
-// Ключевой фрагмент: цикл Accept + go c.serve()
+type conn struct {
+    server   *Server           // ссылка на сервер
+    rwc      net.Conn          // сырое TCP-соединение
+    bufr     *bufio.Reader     // буферизованное чтение
+    bufw     *bufio.Writer     // буферизованная запись
+    curState atomic.Uint64     // состояние: new/active/idle/closed
+    // ...
+}
 ```
 
-### `conn.serve()`: что внутри
+Ключевое — `go c.serve(connCtx)`. С этого момента каждое соединение живёт в **отдельной горутине**. Именно здесь HTTP-сервер Go становится конкурентным: тысячи клиентов обслуживаются тысячами горутин, каждая работает со своим `conn`.
 
-<!-- TLS handshake, readRequest, вызов handler'а, keep-alive цикл. -->
+Планировщик Go эффективно мультиплексирует горутины на потоки ОС. Блокировка на чтении из сокета (I/O wait) не блокирует поток — горутина «засыпает», а поток переключается на другую.
 
-### `readRequest()`
+> **Зачем это Go-разработчику.** Модель «горутина на соединение» — причина, по которой Go-серверы держат десятки тысяч одновременных соединений без thread-per-connection накладных расходов. Но это же значит, что любые разделяемые данные в обработчиках требуют синхронизации — о чём раздел 13.
 
-<!-- Как парсится HTTP-запрос: bufio.Reader, заголовки, тело, трейлеры. -->
+***
 
-> **Зачем это Go-разработчику.** <!-- -->
+### `conn.serve()`: жизненный цикл соединения
+
+`serve` — главный метод `conn`. Он делает всё: TLS-рукопожатие, чтение запросов, вызов обработчиков, keep-alive:
+
+```go
+func (c *conn) serve(ctx context.Context) {
+    c.remoteAddr = c.rwc.RemoteAddr().String()
+
+    // 1. TLS handshake (если соединение TLS)
+    if tlsConn, ok := c.rwc.(*tls.Conn); ok {
+        tlsConn.HandshakeContext(ctx)
+        // если рукопожатие не удалось — закрываем соединение
+    }
+
+    // 2. HTTP/1.x — бесконечный цикл keep-alive
+    for {
+        w, err := c.readRequest(ctx)       // парсим запрос
+        if err != nil {
+            return                          // ошибка — закрываем соединение
+        }
+
+        // 3. Вызываем обработчик (синхронно, одна горутина на соединение)
+        serverHandler{c.server}.ServeHTTP(w, w.req)
+
+        // 4. Завершаем ответ и решаем: keep-alive или закрыть
+        w.finishRequest()
+        if !w.shouldReuseConnection() {
+            return
+        }
+
+        // 5. Ждём следующий запрос в этом же соединении
+        c.rwc.SetReadDeadline(time.Now().Add(idleTimeout))
+        if _, err := c.bufr.Peek(4); err != nil {
+            return
+        }
+    }
+}
+```
+
+Важные детали:
+- Обработчик вызывается **синхронно** в той же горутине, что читает запрос. Пока обработчик не вернёт управление, следующий запрос в этом соединении не будет прочитан.
+- HTTP/2 работает иначе — там несколько потоков на одно TCP-соединение.
+- `Peek(4)` в конце цикла ждёт первых байтов следующего запроса, не потребляя их. Если клиент молчит дольше `IdleTimeout` — соединение закрывается.
+
+> **Зачем это Go-разработчику.** Обработчик выполняется синхронно — если он делает долгую работу, keep-alive-соединение простаивает. Выносите тяжёлые операции в отдельные горутины, если хотите обслуживать несколько запросов по одному TCP-соединению (HTTP/1.1) одновременно. HTTP/2 решает это мультиплексированием.
+
+***
+
+### `readRequest()`: парсинг HTTP-запроса
+
+`readRequest` превращает сырые байты из TCP-соединения в `*http.Request`:
+
+```go
+func (c *conn) readRequest(ctx context.Context) (w *response, err error) {
+    // 1. Устанавливаем дедлайн на чтение заголовков
+    if d := c.server.ReadHeaderTimeout; d > 0 {
+        c.rwc.SetReadDeadline(time.Now().Add(d))
+    }
+
+    // 2. Лимитируем размер заголовков (по умолчанию 1 MB + 4 KB)
+    c.r.setReadLimit(c.server.initialReadLimitSize())
+
+    // 3. Парсим HTTP/1.x запрос через bufio.Reader
+    req, err := readRequest(c.bufr)
+    if err != nil {
+        return nil, err
+    }
+
+    // 4. Создаём response — структуру для формирования ответа
+    w = &response{
+        conn:    c,
+        req:     req,
+        handlerHeader: make(Header),
+    }
+    return w, nil
+}
+```
+
+Парсинг через `readRequest(c.bufr)` (нижний регистр — приватная функция) делает:
+- Читает строку запроса (`GET /path HTTP/1.1\r\n`)
+- Парсит заголовки в `Header` (map[string][]string)
+- Определяет наличие тела: `Content-Length` или `Transfer-Encoding: chunked`
+- Создаёт `Request.Body` — `io.ReadCloser`, читающий из того же `conn`
+
+Если клиент прислал `Expect: 100-continue`, сервер **автоматически** отправляет `100 Continue` при первом чтении из `Request.Body`.
+
+> **Зачем это Go-разработчику.** `ReadHeaderTimeout` — ваш главный инструмент против slow-клиентов. Без него злоумышленник может открыть соединение и слать по одному байту в минуту, удерживая горутину и сокет. `ReadTimeout` защищает от медленного чтения тела. Всегда устанавливайте оба.
+
+> **Зачем это Go-разработчику.** Весь путь запроса укладывается в пять шагов: `ListenAndServe` открывает сокет → `Serve` в цикле принимает соединения → `go c.serve()` запускает горутину → `readRequest` парсит запрос → ваш `Handler.ServeHTTP` формирует ответ. Понимание этой цепочки позволяет осмысленно настраивать таймауты, отлаживать утечки горутин и проектировать обработчики под конкурентную модель сервера.
 
 ***
 
