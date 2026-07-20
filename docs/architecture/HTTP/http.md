@@ -1804,97 +1804,562 @@ client := &http.Client{
 
 ***
 
-## 13. Конкурентность в сервере (B6)
+## 13. Конкурентность в сервере
 
-### Модель «горутина на соединение»
+Модель «горутина на соединение» (раздел 9) делает HTTP-сервер Go конкурентным по умолчанию. Но отсюда следует важный вывод: все ваши обработчики выполняются **параллельно** в разных горутинах. Любое разделяемое состояние требует синхронизации.
 
-<!-- Почему так, плюсы и минусы. Как горутины планировщика Go делают это эффективным. -->
+***
 
-### Гонки данных в handler'ах
+### Модель «горутина на соединение»: следствия
+
+Каждый вызов `Handler.ServeHTTP` происходит в отдельной горутине. Миллион запросов = миллион горутин (не одновременно — планировщик мультиплексирует их на потоки ОС). Плюсы и минусы:
+
+**Плюсы:**
+- Простота кода: обработчик выглядит как последовательный код, параллелизм — за сервером
+- Эффективность: горутины легковесны (~2 KB стека), не потоки ОС
+- Масштабируемость: десятки тысяч одновременных соединений без thread-per-connection
+
+**Минусы:**
+- Разделяемые данные требуют синхронизации — гонки молчаливо разрушают состояние
+- Если все горутины заблокированы на внешнем вызове без таймаута — сервер встаёт
+- Нельзя полагаться на порядок выполнения обработчиков
+
+> **Зачем это Go-разработчику.** Модель «горутина на соединение» уже работает — вам не нужно её реализовывать. Ваша задача — писать потокобезопасные обработчики.
+
+***
+
+### Гонки данных в обработчиках
+
+Типичный сценарий: счётчик посещений, обновляемый из обработчика:
 
 ```go
-// Пример гонки и её исправления через sync.Mutex
+type Server struct {
+    hits int  // РАЗДЕЛЯЕМОЕ СОСТОЯНИЕ — ГОНКА!
+}
+
+func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
+    s.hits++  // data race: две горутины читают-изменяют-записывают
+    fmt.Fprintf(w, "hits: %d", s.hits)
+}
 ```
+
+Go runtime обнаруживает гонку на map-операциях и паникует: `fatal error: concurrent map writes`. Но для целых чисел (`int`) гонка **молчалива** — данные повреждаются без падения. Запуск с `-race` обнаружит проблему.
+
+Исправление — `sync.Mutex`:
+
+```go
+type Server struct {
+    mu   sync.Mutex
+    hits int
+}
+
+func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
+    s.mu.Lock()
+    s.hits++
+    count := s.hits
+    s.mu.Unlock()
+    fmt.Fprintf(w, "hits: %d", count)
+}
+```
+
+Важно: **методы, изменяющие состояние, должны быть на pointer receiver**. Значение-ресивер копирует структуру, и мьютекс копируется вместе с ней — каждая копия имеет свой мьютекс, синхронизации нет.
+
+```go
+func (s Server) handler(w http.ResponseWriter, r *http.Request) {  // ОШИБКА!
+    s.mu.Lock()  // блокирует копию, не оригинал
+}
+```
+
+> **Зачем это Go-разработчику.** Всегда запускайте тесты с `-race`. Он находит гонки, даже если они не вызывают панику. Pointer receiver для методов, изменяющих состояние — не рекомендация, а требование корректности.
+
+***
 
 ### Мьютексы vs каналы
 
-<!-- Из статьи Bendersky: два подхода к синхронизации доступа к разделяемым данным. -->
+Два подхода к синхронизации: мьютексы и каналы. Оба решают задачу, но у каждого своя область применения.
+
+**Мьютексы** — защита разделяемой структуры данных:
 
 ```go
-// Пример с каналами: Command + manager-горутина
+type CounterStore struct {
+    mu    sync.Mutex
+    items map[string]int
+}
+
+func (c *CounterStore) Inc(key string) {
+    c.mu.Lock()
+    c.items[key]++
+    c.mu.Unlock()
+}
 ```
+
+**Каналы** — передача владения данными одной горутине:
+
+```go
+type Command struct {
+    key       string
+    replyChan chan int
+}
+
+func counterManager() chan<- Command {
+    cmds := make(chan Command)
+    counters := make(map[string]int)
+
+    go func() {
+        for cmd := range cmds {
+            counters[cmd.key]++
+            cmd.replyChan <- counters[cmd.key]
+        }
+    }()
+    return cmds
+}
+// Одна горутина владеет map, остальные общаются через каналы
+```
+
+Когда что использовать:
+
+| Ситуация | Инструмент |
+|---|---|
+| Защита структуры, к которой обращаются много горутин | `sync.Mutex` |
+| Передача данных между горутинами | Канал |
+| Координация/сигнализация (ожидание завершения) | Канал или `sync.WaitGroup` |
+| Однократная блокировка ресурса | `sync.Mutex` |
+| Поток данных от производителя к потребителю | Канал |
+
+Правило из Go Wiki: «Use whichever is most expressive and/or most simple.» Для защиты разделяемой карты мьютекс проще. Для координации нескольких горутин — каналы.
+
+> **Зачем это Go-разработчику.** Не бросайтесь переписывать всё на каналы ради идиоматичности. Мьютекс для защиты состояния обработчика — абсолютно нормальный Go-код. Каналы хороши для потоков данных и явной передачи владения.
+
+***
 
 ### Rate limiting
 
+Перегрузка сервера — реальная угроза. Даже если обработчики потокобезопасны, неограниченное количество одновременных запросов может исчерпать память или БД-соединения.
+
+Ограничение количества одновременных обработчиков через буферизованный канал как **семафор**:
+
 ```go
-// Буферизованный канал как семафор
+func limitConcurrency(handler http.HandlerFunc, max int) http.HandlerFunc {
+    sema := make(chan struct{}, max)  // буферизованный канал как семафор
+
+    return func(w http.ResponseWriter, r *http.Request) {
+        sema <- struct{}{}            // занять слот (блокируется, если все заняты)
+        defer func() { <-sema }()     // освободить слот
+
+        handler(w, r)
+    }
+}
+
+http.HandleFunc("/expensive", limitConcurrency(expensiveHandler, 10))
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Как это работает: канал ёмкостью `max` может принять `max` значений. Когда все слоты заняты, `sema <- struct{}{}` блокирует горутину — запрос ждёт освобождения слота. Это глобальный лимит на все запросы к данному обработчику.
+
+Для более точного контроля — `context.Done()`:
+
+```go
+func limitConcurrency(handler http.HandlerFunc, max int) http.HandlerFunc {
+    sema := make(chan struct{}, max)
+
+    return func(w http.ResponseWriter, r *http.Request) {
+        select {
+        case sema <- struct{}{}:
+            defer func() { <-sema }()
+            handler(w, r)
+        case <-r.Context().Done():
+            // клиент отвалился, не ждём
+            return
+        }
+    }
+}
+```
+
+> **Зачем это Go-разработчику.** Rate limiting через семафор — самый простой способ защитить сервер от перегрузки. Не требует внешних библиотек. Добавьте его на ресурсоёмкие эндпоинты (генерация отчётов, загрузка файлов). Для per-IP лимитов используйте `golang.org/x/time/rate`.
+
+> **Зачем это Go-разработчику.** Конкурентность в `net/http` — палка о двух концах. Она даёт производительность «из коробки», но требует дисциплины: защищайте разделяемое состояние мьютексами, проверяйте с `-race`, ограничивайте параллелизм через семафоры. Эти три привычки превращают «работает» в «работает надёжно».
 
 ***
 
-## 14. Middleware (B7)
+## 14. Middleware
+
+Middleware — это функция, принимающая `http.Handler` и возвращающая `http.Handler`. Она оборачивает следующий обработчик, добавляя поведение до и после его вызова. Вся мощь и гибкость `net/http` строится на этом одном паттерне.
+
+```go
+type Middleware func(http.Handler) http.Handler
+```
+
+***
 
 ### Паттерн `func(http.Handler) http.Handler`
 
+Минимальный middleware — логирование каждого запроса:
+
 ```go
-// Базовый пример middleware
+func loggingMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        next.ServeHTTP(w, r)
+        log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+    })
+}
 ```
+
+Подключение:
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("/hello", helloHandler)
+
+// Оборачиваем весь mux
+loggedMux := loggingMiddleware(mux)
+http.ListenAndServe(":8080", loggedMux)
+```
+
+Что здесь происходит: `loggingMiddleware` возвращает `http.HandlerFunc` — замыкание, которое засекает время, вызывает оригинальный обработчик и логирует. Ни `mux`, ни `helloHandler` не знают о логировании.
+
+> **Зачем это Go-разработчику.** Паттерн middleware из `net/http` не требует фреймворков. Это просто композиция функций. В отличие от Gin/Chi, где middleware регистрируется через `r.Use()`, здесь вы сами управляете порядком оборачивания.
+
+***
 
 ### Цепочки middleware
 
-<!-- Как объединить несколько middleware. -->
+Несколько middleware объединяются последовательным оборачиванием — справа налево:
+
+```go
+// Порядок выполнения: logging → auth → handler
+handler := loggingMiddleware(authMiddleware(mux))
+```
+
+Для удобства — вспомогательная функция:
+
+```go
+func chainMiddleware(handler http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
+    for i := len(middlewares) - 1; i >= 0; i-- {
+        handler = middlewares[i](handler)
+    }
+    return handler
+}
+
+handler := chainMiddleware(mux,
+    loggingMiddleware,
+    authMiddleware,
+    corsMiddleware,
+    recoveryMiddleware,
+)
+```
+
+Порядок важен: `loggingMiddleware` выполняется ПЕРВЫМ (самым внешним), затем `authMiddleware`, и так до самого обработчика. При возврате — наоборот: сначала обработчик, потом auth, потом logging.
+
+Типичный набор middleware для API:
+
+```go
+func recoveryMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        defer func() {
+            if err := recover(); err != nil {
+                log.Printf("panic: %v", err)
+                http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+            }
+        }()
+        next.ServeHTTP(w, r)
+    })
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        token := r.Header.Get("Authorization")
+        if token == "" {
+            http.Error(w, "Unauthorized", http.StatusUnauthorized)
+            return
+        }
+        // ...проверка токена...
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+> **Зачем это Go-разработчику.** В отличие от Gin с `r.Use()`, порядок в цепочке `net/http` определяется порядком аргументов при оборачивании. Это прозрачнее, но требует внимательности. `recoveryMiddleware` — обязательно: без него паника в обработчике уронит всю горутину соединения (сервер перехватит, но залогирует стектрейс и закроет соединение).
+
+***
 
 ### `ResponseController`
 
-<!-- Flush, Hijack, SetReadDeadline, SetWriteDeadline, EnableFullDuplex. -->
+`ResponseController` — унифицированный доступ к расширенным возможностям `ResponseWriter`, появившийся в Go 1.20. Вместо type assertion к `Flusher`, `Hijacker` и ручной установки дедлайнов — один объект:
 
-> **Зачем это Go-разработчику.** <!-- -->
+```go
+func streamHandler(w http.ResponseWriter, r *http.Request) {
+    rc := http.NewResponseController(w)
+
+    // Flush: отправить буфер немедленно (SSE, стриминг)
+    rc.Flush()
+
+    // Hijack: перехватить TCP-соединение (WebSocket)
+    conn, bufrw, err := rc.Hijack()
+
+    // Дедлайны на чтение и запись
+    rc.SetReadDeadline(time.Now().Add(30 * time.Second))
+    rc.SetWriteDeadline(time.Now().Add(10 * time.Second))
+
+    // Full Duplex: читать Request.Body и писать ответ одновременно (HTTP/1.x)
+    rc.EnableFullDuplex()
+}
+```
+
+Если `ResponseWriter` не поддерживает операцию, `ResponseController` возвращает ошибку `ErrNotSupported`, а не паникует.
+
+Особенно полезен `EnableFullDuplex()`: по умолчанию сервер HTTP/1.x читает всё тело запроса до отправки ответа. `EnableFullDuplex()` разрешает чередовать чтение и запись в рамках одного запроса — нужно для интерактивных протоколов поверх HTTP.
+
+> **Зачем это Go-разработчику.** `ResponseController` — современная альтернатива type assertion к `w.(http.Flusher)`. Он безопаснее (возвращает ошибку, а не false), унифицирует API и не теряется при оборачивании `ResponseWriter`. Используйте вместо прямых type assertion во всех новых проектах.
+
+> **Зачем это Go-разработчику.** Middleware в `net/http` — это композиция функций, а не магия фреймворка. Три правила: middleware = `func(http.Handler) http.Handler`, порядок оборачивания определяет порядок выполнения, для расширенных возможностей используйте `ResponseController`. Всё остальное — соглашения.
 
 ***
 
-## 15. Тестирование HTTP (B8)
+## 15. Тестирование HTTP
+
+Пакет `net/http/httptest` предоставляет два основных инструмента: `NewServer` для интеграционных тестов с настоящим HTTP-сервером и `NewRecorder` для модульных тестов отдельных обработчиков. `net/http/httptrace` добавляет трассировку клиентских запросов.
+
+***
 
 ### `httptest.NewServer`
 
-```go
-// Пример теста с запуском тестового сервера
-```
-
-### `httptest.NewRecorder`
+Запускает реальный HTTP-сервер на случайном порту. Подходит для интеграционных тестов — проверяется весь стек: маршрутизация, middleware, запись ответа:
 
 ```go
-// Пример теста handler'а без запуска сервера
+func TestGetUser(t *testing.T) {
+    mux := http.NewServeMux()
+    mux.HandleFunc("GET /users/{id}", func(w http.ResponseWriter, r *http.Request) {
+        id := r.PathValue("id")
+        w.Header().Set("Content-Type", "application/json")
+        fmt.Fprintf(w, `{"id": %s, "name": "Alice"}`, id)
+    })
+
+    server := httptest.NewServer(mux)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/users/42")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("expected 200, got %d", resp.StatusCode)
+    }
+}
 ```
 
-### Трассировка с `httptrace`
+`server.URL` — адрес вида `http://127.0.0.1:54321`. `server.Close()` останавливает сервер. Каждый тест получает свой порт — тесты можно запускать параллельно.
+
+Для тестирования клиента к внешнему API — `NewServer` подменяет реальный сервер:
 
 ```go
-// Хуки: DNS start/done, Connect start/done, TLS handshake, GotConn
+func TestClient(t *testing.T) {
+    // Создаём фейковый API
+    fakeAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte(`{"status": "ok"}`))
+    }))
+    defer fakeAPI.Close()
+
+    client := &MyAPIClient{BaseURL: fakeAPI.URL}
+    status, err := client.GetStatus()
+    if err != nil {
+        t.Fatal(err)
+    }
+    if status != "ok" {
+        t.Errorf("expected 'ok', got %q", status)
+    }
+}
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+> **Зачем это Go-разработчику.** `NewServer` тестирует реальный HTTP-обмен: клиент → сеть → сервер → сеть → клиент. Это ловит ошибки сериализации заголовков, таймаутов, закрытия тела — то, что `NewRecorder` не проверяет.
 
 ***
 
-## 16. Graceful shutdown (B9)
+### `httptest.NewRecorder`
+
+Тестирует обработчик изолированно, без сети. Быстрее `NewServer`, подходит для модульных тестов:
+
+```go
+func TestHelloHandler(t *testing.T) {
+    handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusCreated)
+        w.Write([]byte("hello"))
+    })
+
+    req := httptest.NewRequest("GET", "/hello", nil)
+    rec := httptest.NewRecorder()
+
+    handler.ServeHTTP(rec, req)
+
+    // Проверяем код
+    if rec.Code != http.StatusCreated {
+        t.Errorf("expected 201, got %d", rec.Code)
+    }
+    // Проверяем тело
+    if rec.Body.String() != "hello" {
+        t.Errorf("expected 'hello', got %q", rec.Body.String())
+    }
+    // Проверяем заголовки
+    if ct := rec.Header().Get("Content-Type"); ct == "" {
+        t.Error("Content-Type not set")
+    }
+}
+```
+
+`NewRecorder` реализует `http.ResponseWriter`, сохраняя код, заголовки и тело в памяти. После вызова `ServeHTTP` можно проверить всё: `rec.Code`, `rec.Body`, `rec.Header()`, `rec.Result()`.
+
+`httptest.NewRequest` — аналог `http.NewRequest`, но для тестов. Принимает method, URL и тело, возвращает `*http.Request`.
+
+> **Зачем это Go-разработчику.** `NewRecorder` для бизнес-логики обработчиков, `NewServer` для интеграционных проверок и тестирования middleware. Используйте `rec.Result()` для получения `*http.Response` — это даёт доступ к статусу, заголовкам и телу через стандартный интерфейс.
+
+***
+
+### Трассировка с `httptrace`
+
+`httptrace` позволяет отслеживать этапы HTTP-запроса на стороне клиента: DNS-резолвинг, TCP-подключение, TLS-рукопожатие, отправка и получение данных. Встраивается через `httptrace.WithClientTrace` в контекст запроса:
+
+```go
+func TestTraceRequest(t *testing.T) {
+    var dnsStart, dnsEnd time.Time
+    var gotConn time.Time
+
+    trace := &httptrace.ClientTrace{
+        DNSStart: func(info httptrace.DNSStartInfo) {
+            dnsStart = time.Now()
+            log.Printf("DNS start: %s", info.Host)
+        },
+        DNSDone: func(info httptrace.DNSDoneInfo) {
+            dnsEnd = time.Now()
+            log.Printf("DNS done: %v, err: %v", dnsEnd.Sub(dnsStart), info.Err)
+        },
+        GotConn: func(info httptrace.GotConnInfo) {
+            gotConn = time.Now()
+            log.Printf("Got connection: reused=%v, wasIdle=%v", info.Reused, info.WasIdle)
+            log.Printf("  DNS: %v, TCP: %v, TLS: %v",
+                info.DNSDuration(), info.TCPDuration(), info.TLSDuration())
+        },
+    }
+
+    req, _ := http.NewRequest("GET", "https://example.com", nil)
+    ctx := httptrace.WithClientTrace(context.Background(), trace)
+    req = req.WithContext(ctx)
+
+    client := &http.Client{Timeout: 10 * time.Second}
+    resp, err := client.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    resp.Body.Close()
+}
+```
+
+**Хуки** (hooks) — это callback-функции, которые `net/http` вызывает при наступлении определённых событий во время запроса. Вы регистрируете функцию в `ClientTrace`, а библиотека вызывает её в нужный момент — вам не нужно встраивать логику в жизненный цикл запроса вручную. Это реализация паттерна «инверсия управления»: не вы вызываете библиотеку, а библиотека вызывает вас.
+
+Хуки `ClientTrace`:
+
+| Хук | Когда вызывается |
+|---|---|
+| `DNSStart` / `DNSDone` | Начало и конец DNS-резолвинга |
+| `ConnectStart` / `ConnectDone` | Установка TCP-соединения |
+| `TLSHandshakeStart` / `TLSHandshakeDone` | TLS-рукопожатие |
+| `GotConn` | Получение соединения из пула или создание нового |
+| `WroteRequest` | Отправка запроса завершена |
+| `GotFirstResponseByte` | Получен первый байт ответа |
+| `PutIdleConn` | Соединение возвращено в пул |
+
+`GotConnInfo` содержит тайминги в виде методов: `DNSDuration()`, `TCPDuration()`, `TLSDuration()`. Это позволяет измерить каждый этап без ручного хронометража.
+
+> **Зачем это Go-разработчику.** `httptrace` незаменим для отладки медленных запросов. Один trace-лог показывает, где именно задержка: в DNS, в TCP-подключении или в ожидании ответа. `GotConnInfo.Reused` показывает, из пула ли соединение — если всегда `false`, проверяйте `MaxIdleConnsPerHost`.
+
+> **Зачем это Go-разработчику.** `httptest.NewServer` для интеграционных тестов, `NewRecorder` для модульных тестов обработчиков, `httptrace` для отладки. Эти три инструмента покрывают все сценарии тестирования HTTP в Go. Не нужно мокать `http.Client` — достаточно подменить сервер на `httptest`.
+
+***
+
+## 16. Graceful shutdown
+
+Остановка HTTP-сервера — не просто `Ctrl+C`. Нужно: перестать принимать новые соединения, дать текущим запросам завершиться и закрыть idle-соединения. `Server.Shutdown` делает это штатно, без потери данных.
+
+`Server.Close` — жёсткий вариант: рвёт все соединения немедленно. Не используйте в продакшене.
+
+***
 
 ### `Server.Shutdown`
 
+`Shutdown` выполняет graceful shutdown в три шага:
+
+1. Закрывает `net.Listener` — новые TCP-соединения не принимаются
+2. Закрывает все idle-соединения (keep-alive без активного запроса)
+3. Ждёт завершения активных запросов и закрывает соединения
+
 ```go
-// Пример с context.WithTimeout
+func main() {
+    server := &http.Server{Addr: ":8080"}
+
+    go func() {
+        if err := server.ListenAndServe(); err != http.ErrServerClosed {
+            log.Fatal(err)
+        }
+    }()
+
+    // Ждём сигнала ОС
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    <-quit
+
+    // Даём 30 секунд на завершение текущих запросов
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    if err := server.Shutdown(ctx); err != nil {
+        log.Fatalf("forced shutdown: %v", err)
+    }
+    log.Println("server stopped gracefully")
+}
 ```
+
+Важно: `ListenAndServe` при shutdown возвращает `http.ErrServerClosed` — это не ошибка, а ожидаемое поведение. Не логируйте это как `Fatal`.
+
+Если за время `ctx` запросы не завершились, `Shutdown` возвращает `context.DeadlineExceeded`. Сервер нужно останавливать жёстче (например, `server.Close()`), но это рискованно.
+
+> **Зачем это Go-разработчику.** Graceful shutdown — не опция, а требование. Без него при деплое вы теряете текущие запросы: клиент получает `connection reset`, деньги в обработке платежа могут списаться, а ответ не отправиться. Всегда используйте `Shutdown`, никогда `Close`.
+
+***
 
 ### `RegisterOnShutdown`
 
-<!-- Когда и зачем: WebSocket, долгие соединения. -->
+Для долгоживущих соединений (WebSocket, SSE) `Shutdown` не знает, когда их можно закрыть — соединение активно, но сервер не понимает, что внутри. `RegisterOnShutdown` регистрирует callback для уведомления таких соединений:
 
-### Закрытие idle-соединений
+```go
+server.RegisterOnShutdown(func() {
+    // Оповещаем WebSocket-клиентов о скором закрытии
+    hub.Broadcast("server shutting down in 30s")
 
-<!-- closeIdleConns, как работает пуллинг в Shutdown. -->
+    // Ждём, пока все WebSocket-соединения закроются
+    hub.WaitAllClosed()
+})
+```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Callback выполняется в отдельной горутине. `Shutdown` не ждёт его завершения — если нужно дождаться, синхронизируйтесь через `sync.WaitGroup` внутри callback.
+
+> **Зачем это Go-разработчику.** `RegisterOnShutdown` — мост между HTTP-сервером и долгоживущими протоколами. Без него WebSocket-соединения обрываются без предупреждения. Отправьте клиентам close frame, подождите подтверждения — и только потом сервер закроется чисто.
+
+***
+
+### Как `Shutdown` работает внутри
+
+Понимание механики помогает отлаживать зависания при остановке:
+
+1. `Shutdown` устанавливает `inShutdown = true` — `Serve` немедленно возвращает `ErrServerClosed`
+2. Закрывает listener — новые `Accept()` не проходят
+3. Вызывает `closeIdleConns()` — закрывает keep-alive соединения без активного запроса
+4. Запускает цикл опроса: проверяет, остались ли активные соединения
+5. Между опросами — exponential backoff: 1ms → 2ms → 4ms → ... → capped at 500ms
+6. Когда активных соединений нет — возвращает `nil`
+
+Если соединения не завершаются дольше `ctx` — `Shutdown` возвращает ошибку контекста, но соединения не рвёт. Повторный вызов `Shutdown` невозможен — сервер после shutdown нельзя переиспользовать.
+
+> **Зачем это Go-разработчику.** Если `Shutdown` зависает, проверьте обработчики на бесконечные циклы и отсутствие таймаутов. `Shutdown` ждёт завершения `ServeHTTP` — если обработчик заблокирован на внешнем вызове без `context.WithTimeout`, сервер никогда не остановится.
 
 ***
 
