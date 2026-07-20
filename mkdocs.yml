@@ -85,6 +85,7 @@ nav:
       - ООП в Go: architecture/ООП/oop.md
       - Чистая архитектура: architecture/Чистая архитектура/clean-architecture.md
       - Микросервисная архитектура: architecture/Микросервисная архитектура/microservices.md
+      - HTTP: architecture/HTTP/http.md
       - gRPC: architecture/gRPC/index.md
   - Детали языка:
       - Обзор: go-details/index.md
@@ -100,6 +101,7 @@ nav:
       - Контекст: go-details/Контекст в Go/context.md
       - Синхронизация: go-details/Синхронизация в Go/synchronization.md
       - Дженерики: go-details/Дженерики в Go/generics.md
+      - Тестирование: go-details/Тестирование в Go/testing.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
       - Планировщик Go: go-fundamentals/Планировщик Go/scheduler.md
