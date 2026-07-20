@@ -2363,44 +2363,320 @@ Callback выполняется в отдельной горутине. `Shutdow
 
 ***
 
-## 17. HTTP/2 в Go (B10)
+## 17. HTTP/2 в Go
 
-### Включение и настройка
-
-```go
-// Protocols, HTTP2Config, h2c
-```
-
-### Server Push API
-
-```go
-// Pusher интерфейс
-```
-
-### GODEBUG-флаги
-
-<!-- http2client, http2server, http2debug -->
-
-> **Зачем это Go-разработчику.** <!-- -->
+HTTP/2 включается в `net/http` автоматически при TLS — никакого дополнительного кода. Детали протокола разобраны в разделе 5. Здесь — практика: как управлять протоколами, настраивать фреймы и отлаживать.
 
 ***
 
-## 18. Продвинутые темы (B11)
+### Включение и настройка протоколов
 
-### Hijack
-
-<!-- Перехват соединения: когда нужно, как работает. -->
-
-### Full Duplex
-
-<!-- EnableFullDuplex, одновременное чтение и запись в HTTP/1.x. -->
-
-### `CrossOriginProtection` (Go 1.25+)
-
-<!-- CSRF-защита: как работает, AddTrustedOrigin, AddInsecureBypassPattern. -->
+По умолчанию `Server` и `DefaultTransport` поддерживают HTTP/1 и HTTP/2 (через TLS). Управление через `Protocols`:
 
 ```go
-// Пример настройки CrossOriginProtection
+// Только HTTP/1
+server := &http.Server{Addr: ":8080"}
+server.Protocols = &http.Protocols{}
+server.Protocols.SetHTTP1(true)
+
+// HTTP/1 + HTTP/2
+server.Protocols.SetHTTP2(true)
+
+// HTTP/2 без TLS (h2c)
+server.Protocols.SetUnencryptedHTTP2(true)
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+На клиенте — симметрично:
+
+```go
+client := &http.Client{
+    Transport: &http.Transport{
+        Protocols: &http.Protocols{},
+    },
+}
+client.Transport.Protocols.SetHTTP2(true)
+```
+
+Если задан кастомный `DialContext` или `TLSClientConfig`, HTTP/2 отключается. Чтобы вернуть — `ForceAttemptHTTP2: true`:
+
+```go
+transport := &http.Transport{
+    TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS13},
+    ForceAttemptHTTP2: true,  // принудительно включить HTTP/2
+}
+```
+
+> **Зачем это Go-разработчику.** `ForceAttemptHTTP2` — флаг, который часто ищут, когда HTTP/2 «внезапно пропадает» при добавлении кастомного TLS. Без него `Transport` консервативно отключает HTTP/2 при любом нестандартном `TLSClientConfig` или `DialContext`.
+
+***
+
+### Тонкая настройка через `HTTP2Config`
+
+`HTTP2Config` (доступен с Go 1.24) — структура для точного контроля HTTP/2 на серверной и клиентской стороне:
+
+```go
+server := &http.Server{
+    Addr: ":443",
+    HTTP2: &http.HTTP2Config{
+        MaxConcurrentStreams:         250,              // макс. параллельных потоков (по умолчанию ≥100)
+        MaxReceiveBufferPerConnection: 1 << 20,         // окно соединения (1 MB)
+        MaxReceiveBufferPerStream:     1 << 16,         // окно потока (64 KB)
+        MaxDecoderHeaderTableSize:     4096,            // макс. размер таблицы HPACK
+        MaxEncoderHeaderTableSize:     4096,
+        MaxReadFrameSize:              1 << 20,         // макс. размер фрейма (1 MB)
+        SendPingTimeout:               15 * time.Second, // health-check пингами
+        PingTimeout:                   15 * time.Second, // таймаут ответа на пинг
+        WriteByteTimeout:              0,               // таймаут записи байта (0 = безлимит)
+    },
+}
+```
+
+Для клиента — аналогично в `Transport.HTTP2`. `StrictMaxConcurrentRequests` (только для `Transport`) заставляет ждать освобождения потока вместо открытия нового TCP-соединения.
+
+> **Зачем это Go-разработчику.** `MaxConcurrentStreams` — лимит параллельных запросов в одном TCP-соединении. По умолчанию ≥100, но сервер может установить ниже через `SETTINGS`. Если вы шлёте больше запросов, чем `MaxConcurrentStreams`, `Transport` по умолчанию откроет дополнительное TCP-соединение. `StrictMaxConcurrentRequests: true` запрещает это — запросы будут ждать освобождения потока.
+
+***
+
+### GODEBUG-флаги для отладки
+
+Без перекомпиляции — через переменные окружения:
+
+```
+# Отключить HTTP/2 полностью
+GODEBUG=http2client=0,http2server=0 go run .
+
+# Только отладка: логирование фреймов
+GODEBUG=http2debug=1 my-server   # события соединений и потоков
+GODEBUG=http2debug=2 my-server   # + дамп содержимого фреймов
+```
+
+`http2debug=2` выводит HEX-дампы каждого фрейма — незаменимо при отладке проблем с HPACK или мультиплексированием.
+
+> **Зачем это Go-разработчику.** `http2debug=2` — первое, что нужно включить при подозрении на проблемы с HTTP/2. Вы увидите каждый `HEADERS`, `DATA`, `RST_STREAM`, `GOAWAY` — и сразу поймёте, кто разрывает поток и почему.
+
+> **Зачем это Go-разработчику.** HTTP/2 в Go работает «из коробки». Три вещи, которые обычно настраивают: `Protocols` для h2c, `ForceAttemptHTTP2` для кастомного TLS, `MaxConcurrentStreams` для нагрузки. Остальное — оптимизация под конкретный профиль трафика.
+
+***
+
+## 18. Продвинутые темы
+
+Три возможности, которые редко нужны в повседневной работе, но критически важны в специфических сценариях: Hijack для протоколов поверх TCP, Full Duplex для интерактивных приложений и `CrossOriginProtection` для защиты от CSRF.
+
+***
+
+### Hijack: перехват TCP-соединения
+
+`Hijack` позволяет обработчику полностью забрать TCP-соединение у HTTP-сервера. После hijack сервер больше не читает из соединения и не пишет в него — вся ответственность на вашем коде.
+
+Зачем: WebSocket, TCP-туннели, любые не-HTTP протоколы, стартующие с HTTP-апгрейда.
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    rc := http.NewResponseController(w)
+    conn, bufrw, err := rc.Hijack()
+    if err != nil {
+        http.Error(w, "hijack not supported", http.StatusInternalServerError)
+        return
+    }
+    defer conn.Close()
+
+    // conn — сырое net.Conn
+    // bufrw — bufio.ReadWriter с данными, уже прочитанными из соединения
+
+    // Дальше — любой протокол поверх TCP
+    go handleCustomProtocol(conn, bufrw)
+}
+```
+
+HTTP/2 **не поддерживает** hijack — только HTTP/1.x. WebSocket в Go реализован именно через hijack (пакет `golang.org/x/net/websocket` или `gorilla/websocket`).
+
+После hijack `Request.Body` использовать нельзя — его данные могли быть частично прочитаны в `bufrw`.
+
+> **Зачем это Go-разработчику.** Hijack — низкоуровневый инструмент. Вы вряд ли будете использовать его напрямую — для WebSocket есть библиотеки. Но понимание hijack объясняет, почему HTTP/2 не работает с WebSocket без промежуточного прокси.
+
+***
+
+### Full Duplex: одновременное чтение и запись
+
+По умолчанию HTTP/1.x сервер читает всё тело запроса до отправки ответа. Это предотвращает дедлок: клиент может отправить тело до начала чтения ответа.
+
+`EnableFullDuplex` разрешает чередовать чтение `Request.Body` и запись в `ResponseWriter` для HTTP/1.x (в HTTP/2 это работает всегда):
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    rc := http.NewResponseController(w)
+    if err := rc.EnableFullDuplex(); err != nil {
+        log.Printf("full duplex not supported: %v", err)
+    }
+
+    // Теперь можно читать и писать одновременно
+    go func() {
+        io.Copy(w, r.Body)  // эхо: читаем тело, пишем в ответ
+    }()
+}
+```
+
+Зачем: интерактивные протоколы, туннелирование, эхо-серверы. Если клиент и сервер обмениваются данными в реальном времени через HTTP/1.1, без Full Duplex каждая сторона ждала бы завершения передачи другой.
+
+> **Зачем это Go-разработчику.** Full Duplex редко нужен в REST API. Он для протоколов, где клиент и сервер обмениваются данными одновременно: туннели, стриминг в обе стороны. В HTTP/2 это поведение по умолчанию — `EnableFullDuplex` не требуется.
+
+***
+
+### `CrossOriginProtection`: защита от CSRF (Go 1.25+)
+
+`CrossOriginProtection` — встроенная защита от Cross-Site Request Forgery, добавленная в Go 1.25. Блокирует небезопасные кросс-сайтовые запросы, проверяя заголовки `Sec-Fetch-Site` и `Origin`:
+
+```go
+func main() {
+    mux := http.NewServeMux()
+    mux.HandleFunc("POST /transfer", transferHandler)
+
+    csrf := http.NewCrossOriginProtection()
+    csrf.AddTrustedOrigin("https://app.example.com")   // наш фронтенд
+    csrf.AddInsecureBypassPattern("GET /health")        // health-check без проверки
+
+    http.ListenAndServe(":8080", csrf.Handler(mux))
+}
+```
+
+Как работает:
+- `GET`, `HEAD`, `OPTIONS` — безопасные методы, всегда разрешены
+- `POST`, `PUT`, `DELETE`, `PATCH` — проверяются на кросс-сайтовость
+- Заголовок `Sec-Fetch-Site: same-origin` — разрешён
+- Заголовок `Sec-Fetch-Site: cross-site` — заблокирован (403 Forbidden)
+- `Origin` сверяется с `Host` — несовпадение блокируется
+- Запросы без `Sec-Fetch-Site` и `Origin` считаются не-браузерными — разрешены
+
+`AddInsecureBypassPattern` использует синтаксис паттернов `ServeMux` и применяет проверку дословно — без trailing-slash редиректов.
+
+```go
+// Кастомная страница ошибки вместо 403
+csrf.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusForbidden)
+    w.Write([]byte("CSRF check failed"))
+}))
+```
+
+> **Зачем это Go-разработчику.** До Go 1.25 CSRF-защиту нужно было реализовывать вручную через токены или внешние библиотеки. `CrossOriginProtection` работает на уровне `Sec-Fetch-Site` (поддерживается браузерами с 2023 года) и `Origin` — прозрачно, без изменения клиентского кода. Добавьте его ко всем не-GET обработчикам, если ваш API используется браузером.
+
+> **Зачем это Go-разработчику.** Три продвинутых инструмента для трёх сценариев: Hijack — когда HTTP уже не HTTP, Full Duplex — когда чтение и запись идут одновременно, CrossOriginProtection — когда API открыт браузеру и нужна защита от CSRF. В стандартном REST API они не нужны. Но когда нужны — альтернатив в stdlib нет.
+
+***
+
+## 19. Фреймворки над `net/http`
+
+Все перечисленные фреймворки, кроме Fiber, построены поверх `net/http` — реализуют `http.Handler` и совместимы со стандартными middleware. Выбор между ними и чистым `net/http` — это вопрос компромисса между удобством и контролем.
+
+| Фреймворк | Надстройка над | Ключевая особенность |
+|---|---|---|
+| **chi** | `net/http` | Идиоматичный, middleware-first, совместим со всей экосистемой stdlib |
+| **Gin** | `net/http` | Самый популярный, производительный, валидация и binding из коробки |
+| **Echo** | `net/http` | Минималистичный, встроенный JWT, HTTP/2, автоматический TLS |
+| **Fiber** | `fasthttp` | Express.js-подобный API, НЕ совместим с `net/http` middleware |
+
+***
+
+### chi
+
+Самый близкий к `net/http` фреймворк. Не добавляет своих контекстов и абстракций — использует стандартный `http.Handler`:
+
+```go
+r := chi.NewRouter()
+r.Use(middleware.Logger)
+r.Use(middleware.Recoverer)
+
+r.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+    id := chi.URLParam(r, "id")  // до Go 1.22 — теперь есть r.PathValue
+    w.Write([]byte("user: " + id))
+})
+
+http.ListenAndServe(":8080", r)
+```
+
+Сильные стороны: middleware-экосистема (логирование, CORS, rate limit, аутентификация), группы маршрутов с вложенными middleware, легковесность. Идеальный выбор, если вам нужно больше, чем `ServeMux`, но без магии Gin.
+
+> **Когда выбрать.** Нужны группы маршрутов с разными middleware, но не хотите уходить от `net/http`-совместимости. Стандартные middleware из chi работают с любым `http.Handler`.
+
+***
+
+### Gin
+
+Самый популярный Go-фреймворк. Свой контекст (`gin.Context`), высокая производительность за счёт пула объектов и внутреннего radix-дерева для маршрутов:
+
+```go
+r := gin.Default()
+r.GET("/users/:id", func(c *gin.Context) {
+    id := c.Param("id")
+    c.JSON(http.StatusOK, gin.H{"id": id, "name": "Alice"})
+})
+r.Run(":8080")
+```
+
+Сильные стороны: binding и валидация JSON/формы из коробки, рендеринг JSON/XML/YAML/Protobuf, встроенное логирование и recovery. Подходит для быстрого прототипирования.
+
+Слабая сторона: `gin.Context` — не `context.Context`, не `http.Handler`. Стандартные middleware требуют адаптера (`gin.WrapH`). Тестирование через `httptest` работает (`r.ServeHTTP`), но обработчики получают `gin.Context`.
+
+> **Когда выбрать.** Быстрый старт, REST API с JSON, когда нужна встроенная валидация. Если проект маленький или прототип — Gin сэкономит время. Для долгоживущих сервисов — chi или чистый `net/http` дают больше контроля.
+
+***
+
+### Echo
+
+Минималистичный фреймворк, похожий на Gin, но с более плоской кривой обучения:
+
+```go
+e := echo.New()
+e.GET("/users/:id", func(c echo.Context) error {
+    return c.JSON(http.StatusOK, map[string]string{"id": c.Param("id")})
+})
+e.Start(":8080")
+```
+
+Встроенная поддержка HTTP/2, автоматический TLS через Let's Encrypt (`e.StartAutoTLS`), JWT-middleware, группировка маршрутов.
+
+> **Когда выбрать.** Нужен минималистичный фреймворк с HTTP/2 и автоматическим HTTPS из коробки. Echo хорошо подходит для микросервисов, где не нужна вся экосистема Gin.
+
+***
+
+### Fiber
+
+Особняком: построен на **fasthttp**, а не на `net/http`. Express.js-подобный API для пришедших из Node.js:
+
+```go
+app := fiber.New()
+app.Get("/users/:id", func(c *fiber.Ctx) error {
+    return c.JSON(fiber.Map{"id": c.Params("id")})
+})
+app.Listen(":8080")
+```
+
+Плюсы: экстремальная производительность (fasthttp быстрее `net/http` в бенчмарках). Минусы: **не совместим** со стандартными middleware и `httptest`. Стандартный `http.Handler` не работает. `fasthttp` не поддерживает HTTP/2.
+
+> **Когда выбрать.** Нужна максимальная производительность для HTTP/1.1, не нужны стандартные middleware. Риск: fasthttp имеет меньшее покрытие тестами и меньшее сообщество, чем `net/http`.
+
+> **Зачем это Go-разработчику.** Чистый `net/http` покрывает большинство потребностей, особенно с паттернами Go 1.22+. Если не хватает — chi добавляет группы и middleware. Если нужно быстрое прототипирование — Gin. Fiber — только если пришли из Express.js и производительность критична, но помните о несовместимости с `net/http`.
+
+***
+
+## Ссылки
+
+### Протокол HTTP
+
+* [MDN: HTTP](https://developer.mozilla.org/ru/docs/Web/HTTP) — обзор протокола, эволюция, безопасность (на русском)
+* [HTTP/2 Explained](https://daniel.haxx.se/http2-explained/) — Daniel Stenberg, бесплатная онлайн-книга об устройстве HTTP/2
+* [HTTP/3 Explained](https://daniel.haxx.se/http3-explained/) — Daniel Stenberg, продолжение про QUIC и HTTP/3
+* [High Performance Browser Networking](https://hpbn.co/) — Ilya Grigorik, главы 9–13: HTTP/1.X, HTTP/2, HTTP/3, оптимизация
+
+### `net/http`
+
+* [Writing Web Applications](https://go.dev/doc/articles/wiki/) — официальный туториал go.dev
+* [pkg.go.dev/net/http](https://pkg.go.dev/net/http) — документация пакета
+* [On concurrency in Go HTTP servers](https://eli.thegreenplace.net/2019/on-concurrency-in-go-http-servers/) — Eli Bendersky: конкурентная модель, `go c.serve()`, гонки данных, rate limiting
+* [Life of an HTTP request in Go](https://eli.thegreenplace.net/2021/life-of-an-http-request-in-a-go-server/) — Eli Bendersky: трейсинг запроса от `Accept` до handler'а
+* [The complete guide to Go net/http timeouts](https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/) — Cloudflare: все таймауты сервера и клиента
+* [Routing Enhancements in Go 1.22](https://go.dev/blog/routing-enhancements) — Go Blog: паттерны, wildcards, `PathValue`
+
+### Смежные темы
+
+* [Making and using middleware in Go](https://www.alexedwards.net/blog/making-and-using-middleware) — Alex Edwards: паттерны middleware и цепочки
+* [GopherCon 2016: Understanding net/http](https://www.youtube.com/watch?v=6UBSjPjL3Qw) — видео-доклад разработчиков пакета
