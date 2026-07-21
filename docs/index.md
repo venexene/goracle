@@ -87,6 +87,7 @@
 | [Дженерики](go-details/Дженерики в Go/generics.md) | Ти́повые параметры, constraints, вывод типов, интерфейсы как типы |
 | [Тестирование](go-details/Тестирование в Go/testing.md) | `go test`, табличные тесты, бенчмарки, фаззинг, мокирование |
 | [Базы данных в Go](go-details/Базы данных в Go/db.md) | SQL-основы, ACID, `database/sql`, `sqlx`, `pgx`, миграции, ORM |
+| [Логирование](go-details/Логирование в Go/logging.md) | `log/slog`, уровни, атрибуты, handlers, контекстное логирование |
 
 ### :material-memory: Устройство Go
 

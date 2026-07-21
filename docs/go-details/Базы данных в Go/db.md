@@ -24,6 +24,7 @@ Go работает с базами данных через пакет `database
 * производительность: индексы, `EXPLAIN`, N+1
 * тестирование с БД: `testcontainers-go`, транзакционные тесты
 * SQLite: встраиваемая БД для тестов и локальных приложений
+* кодогенерация: `sqlc` — типобезопасный Go-код из SQL-запросов
 
 > **Зачем это Go-разработчику.** База данных — самый надёжный источник состояния в системе. Если вы теряете данные — вы теряете бизнес. А потерять их легко: забытая транзакция, неправильный уровень изоляции, N+1 запрос под нагрузкой. Понимание базы данных от SQL до пула соединений — обязательный навык бэкенд-разработчика, а не опция.
 
@@ -2361,6 +2362,206 @@ func TestWithSQLite(t *testing.T) {
 
 ***
 
+## 19. Кодогенерация: `sqlc`
+
+Ручное написание SQL-запросов и сканирование в структуры (раздел 7) — много повторяющегося кода. ORM (раздел 13) генерирует SQL сам, но теряет контроль. `sqlc` — третий путь: вы пишете SQL, а библиотека генерирует Go-код для его выполнения.
+
+[`sqlc`](https://sqlc.dev) — кодогенератор, который читает SQL-файлы и создаёт типобезопасные Go-функции. Компиляция гарантирует, что запросы соответствуют схеме БД: опечатка в имени колонки — ошибка компиляции, а не runtime.
+
+***
+
+### Как работает `sqlc`
+
+Вы пишете три вещи:
+
+1. **Схема БД** — `CREATE TABLE`, индексы, внешние ключи
+2. **SQL-запросы** — именованные запросы с аннотациями
+3. **Конфигурация** — `sqlc.yaml`: какой драйвер, где схема, где запросы, куда генерировать
+
+`sqlc` разбирает схему, парсит SQL, сверяет типы и генерирует Go-код с готовыми функциями.
+
+### Пример: от SQL к Go
+
+**schema.sql** — описание таблицы:
+
+```sql
+CREATE TABLE authors (
+    id   BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    bio  TEXT
+);
+```
+
+**query.sql** — запросы с аннотациями:
+
+```sql
+-- name: GetAuthor :one
+SELECT id, name, bio FROM authors WHERE id = $1;
+
+-- name: ListAuthors :many
+SELECT id, name, bio FROM authors ORDER BY name;
+
+-- name: CreateAuthor :one
+INSERT INTO authors (name, bio) VALUES ($1, $2) RETURNING *;
+
+-- name: DeleteAuthor :exec
+DELETE FROM authors WHERE id = $1;
+```
+
+**sqlc.yaml** — конфигурация:
+
+```yaml
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "query.sql"
+    schema: "schema.sql"
+    gen:
+      go:
+        package: "authors"
+        out: "authors"
+        sql_package: "pgx/v5"
+```
+
+Запуск: `sqlc generate`. На выходе — пакет `authors` со сгенерированным кодом:
+
+```go
+// Сгенерировано sqlc. НЕ РЕДАКТИРОВАТЬ ВРУЧНУЮ.
+
+type Author struct {
+    ID   int64
+    Name string
+    Bio  sql.NullString
+}
+
+// GetAuthor возвращает одну строку (аннотация :one)
+func (q *Queries) GetAuthor(ctx context.Context, id int64) (Author, error) {
+    // сгенерированный SQL-код с плейсхолдерами
+}
+
+// ListAuthors возвращает срез (аннотация :many)
+func (q *Queries) ListAuthors(ctx context.Context) ([]Author, error) {
+    // ...
+}
+
+// CreateAuthor возвращает созданную строку
+func (q *Queries) CreateAuthor(ctx context.Context, arg CreateAuthorParams) (Author, error) {
+    // ...
+}
+
+type CreateAuthorParams struct {
+    Name string
+    Bio  sql.NullString
+}
+```
+
+`sqlc` автоматически создаёт структуры для параметров (`CreateAuthorParams`), когда их больше одного.
+
+### Использование сгенерированного кода
+
+```go
+import (
+    "context"
+    "database/sql"
+    _ "github.com/jackc/pgx/v5/stdlib"
+    "example/authors"
+)
+
+func main() {
+    db, _ := sql.Open("pgx", "postgres://user:pass@localhost:5432/mydb")
+    defer db.Close()
+
+    queries := authors.New(db)
+
+    ctx := context.Background()
+
+    // Создать автора
+    author, err := queries.CreateAuthor(ctx, authors.CreateAuthorParams{
+        Name: "Robert C. Martin",
+        Bio:  sql.NullString{String: "Uncle Bob", Valid: true},
+    })
+
+    // Получить по ID
+    author, err = queries.GetAuthor(ctx, author.ID)
+
+    // Список всех авторов
+    allAuthors, err := queries.ListAuthors(ctx)
+}
+```
+
+Никаких `rows.Scan`, никаких `SELECT ...` в коде. Вызов метода → типобезопасный результат.
+
+### Аннотации `sqlc`
+
+Каждый запрос аннотируется парой `-- name: <GoName> :<kind>`:
+
+| Аннотация | Генерирует |
+|---|---|
+| `:one` | Функция, возвращающая одну структуру + `error` |
+| `:many` | Функция, возвращающая `[]структура` + `error` |
+| `:exec` | Функция, возвращающая только `error` |
+| `:execrows` | Как `:exec`, но возвращает `(int64, error)` — количество затронутых строк |
+| `:batchexec` | Пакетное выполнение |
+| `:copyfrom` | `COPY FROM` для массовых вставок |
+
+### `sqlc` + миграции
+
+`sqlc` читает схему из файлов, а миграции создают её в БД. Стандартная связка:
+
+```
+migrations/
+    000001_create_authors.up.sql   ← миграции (golang-migrate)
+    000001_create_authors.down.sql
+
+sql/
+    schema.sql                     ← схема для sqlc (может быть ссылкой на миграции)
+    queries/
+        authors.sql                ← запросы с аннотациями
+```
+
+В `sqlc.yaml` указываете путь к схеме:
+
+```yaml
+sql:
+  - engine: "postgresql"
+    schema: "migrations/"   # sqlc прочитает все .up.sql
+    queries: "sql/queries/"
+```
+
+Либо генерируете `schema.sql` через дамп структуры: `pg_dump --schema-only > schema.sql`.
+
+### `sqlc` vs ORM vs ручные запросы
+
+| Подход | Контроль над SQL | Типобезопасность | Скорость разработки |
+|---|---|---|---|
+| Ручной `database/sql` | Полный | Ручная проверка | Низкая |
+| `sqlx` | Полный | Частичная (теги `db`) | Средняя |
+| **`sqlc`** | **Полный** | **Полная (генерация)** | **Высокая** |
+| GORM | Низкий (SQL генерируется) | Средняя (теги) | Высокая для CRUD, низкая для сложного |
+
+`sqlc` занимает нишу между `sqlx` и ORM: SQL пишете вы (полный контроль), Go-код генерируется (типобезопасность). Нет рантайм-рефлексии — только сгенерированный код.
+
+### Когда `sqlc` особенно полезен
+
+- **Сложные запросы.** JOIN, агрегация, оконные функции — вы пишете SQL, `sqlc` создаёт структуру под результат
+- **Большая команда.** SQL-файл — единый источник правды. Go-код регенерируется одной командой
+- **Микросервисы.** Маленькие сервисы с десятком запросов — `sqlc` генерирует ровно то, что нужно
+- **CI/CD.** `sqlc diff` проверяет, что сгенерированный код актуален — ошибка в CI, если забыли запустить `generate`
+
+### Ограничения
+
+- **Статический SQL.** `sqlc` не умеет динамические запросы (таблицы/колонки из переменных). Для них — ручной `database/sql` + белый список имён (раздел 15).
+- **Не все БД.** PostgreSQL, MySQL, SQLite — да. Менее популярные — нет.
+- **Кодогенерация как шаг сборки.** Нужно запускать `sqlc generate` перед `go build`. Встраивается в CI и `go:generate`.
+
+```go
+//go:generate sqlc generate
+```
+
+> **Зачем это Go-разработчику.** `sqlc` — лучшее из двух миров: полный контроль над SQL (как с `sqlx`) и типобезопасность без рутины (как с ORM). Опечатка в имени колонки становится ошибкой компиляции, а не паникой в 3 часа ночи. `sqlc` + `golang-migrate` + `pgx` — современный стек работы с БД в Go без ORM-компромиссов. Если вы пишете SQL руками и устали от `rows.Scan(&a, &b, &c)` — попробуйте `sqlc`.
+
+***
+
 ## Источники
 
 ### Официальная документация
@@ -2378,6 +2579,11 @@ func TestWithSQLite(t *testing.T) {
 * [pgx: PostgreSQL Driver and Toolkit](https://github.com/jackc/pgx) — репозиторий `pgx` с примерами
 * [Practical Persistence in Go: SQL Databases](https://www.alexedwards.net/blog/practical-persistence-sql) — Alex Edwards: `database/sql` от подключения до транзакций
 * [Organising Database Access in Go](https://www.alexedwards.net/blog/organising-database-access) — Alex Edwards: паттерны доступа к БД, репозитории
+
+### Кодогенерация
+
+* [sqlc](https://sqlc.dev) — официальный сайт и документация
+* [sqlc: Getting Started with PostgreSQL](https://docs.sqlc.dev/en/stable/tutorials/getting-started-postgresql.html) — официальный туториал
 
 ### GORM
 
