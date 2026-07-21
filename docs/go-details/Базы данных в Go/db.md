@@ -23,6 +23,7 @@ Go работает с базами данных через пакет `database
 * SQL-инъекции и безопасность
 * производительность: индексы, `EXPLAIN`, N+1
 * тестирование с БД: `testcontainers-go`, транзакционные тесты
+* SQLite: встраиваемая БД для тестов и локальных приложений
 
 > **Зачем это Go-разработчику.** База данных — самый надёжный источник состояния в системе. Если вы теряете данные — вы теряете бизнес. А потерять их легко: забытая транзакция, неправильный уровень изоляции, N+1 запрос под нагрузкой. Понимание базы данных от SQL до пула соединений — обязательный навык бэкенд-разработчика, а не опция.
 
@@ -1116,83 +1117,1298 @@ func runMigrations(dbURL string) error {
 
 ## 11. `sqlx`: расширение `database/sql`
 
-<!-- StructScan, Named, In — когда и зачем. -->
+[`sqlx`](https://github.com/jmoiron/sqlx) — тонкая надстройка над `database/sql`. Не заменяет его, а убирает рутину: сканирование в структуры, именованные параметры, `IN` со срезами. Тот же пул соединений, те же драйверы — только меньше кода.
 
 ```go
-// Пример sqlx: StructScan, Named
+import (
+    "github.com/jmoiron/sqlx"
+    _ "github.com/jackc/pgx/v5/stdlib"
+)
+
+db, _ := sqlx.Connect("pgx", "postgres://user:pass@localhost:5432/mydb?sslmode=disable")
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+`sqlx.Connect` = `sql.Open` + `Ping` в одном вызове.
+
+***
+
+### `StructScan` — сканирование в структуру
+
+Главная боль `database/sql` — перечислять поля вручную. `sqlx` делает это по тегам `db`:
+
+```go
+type User struct {
+    ID    int    `db:"id"`
+    Name  string `db:"name"`
+    Email string `db:"email"`
+}
+
+var users []User
+err := db.Select(&users, "SELECT id, name, email FROM users WHERE active = $1", true)
+```
+
+Методы для сканирования:
+
+| Метод | Когда |
+|---|---|
+| `db.Select(&slice, query, args...)` | Много строк → срез структур |
+| `db.Get(&struct, query, args...)` | Одна строка → одна структура. Нет строк → ошибка `sql.ErrNoRows` |
+| `db.QueryRowx(query, args...).StructScan(&struct)` | Как `Get`, но больше контроля |
+
+Сложная структура — вложенные объекты из JOIN:
+
+```go
+type OrderWithUser struct {
+    OrderID  int     `db:"order_id"`
+    Amount   float64 `db:"amount"`
+    UserName string  `db:"user_name"`
+}
+
+var orders []OrderWithUser
+db.Select(&orders, `
+    SELECT o.id AS order_id, o.amount, u.name AS user_name
+    FROM orders o
+    JOIN users u ON u.id = o.user_id
+`)
+```
+
+Ключевой момент: алиасы в SQL (`AS order_id`) должны совпадать с тегами `db` в структуре.
+
+***
+
+### `Named` — именованные параметры
+
+Вместо `$1, $2, $3` — параметры по именам из структуры или мапы:
+
+```go
+user := User{Name: "Alice", Email: "alice@example.com"}
+
+// :name и :email подставятся из полей структуры
+_, err := db.NamedExec(`
+    INSERT INTO users (name, email) VALUES (:name, :email)
+`, user)
+```
+
+С мапой:
+
+```go
+db.NamedExec(`UPDATE users SET email = :email WHERE id = :id`,
+    map[string]interface{}{
+        "id":    42,
+        "email": "new@example.com",
+    })
+```
+
+`NamedQuery` для чтения:
+
+```go
+rows, _ := db.NamedQuery(`SELECT * FROM users WHERE name = :name`, user)
+defer rows.Close()
+```
+
+***
+
+### `In` — `IN (...)` со срезами
+
+`database/sql` не умеет подставлять срез в `IN ($1, $2, $3)`. `sqlx` — умеет:
+
+```go
+ids := []int{1, 2, 3, 4, 5}
+
+// sqlx.In раскроет ? в ?, ?, ?, ?, ? и переставит аргументы
+query, args, _ := sqlx.In("SELECT * FROM users WHERE id IN (?)", ids)
+
+// query = "SELECT * FROM users WHERE id IN (?, ?, ?, ?, ?)"
+// args  = [1, 2, 3, 4, 5]
+db.Query(query, args...)
+```
+
+С PostgreSQL — плейсхолдеры `$1, $2` вместо `?`. `sqlx.In` всегда выдаёт `?`, но `db.Rebind()` преобразует их под нужный драйвер:
+
+```go
+ids := []int{1, 2, 3}
+
+query, args, _ := sqlx.In("SELECT * FROM users WHERE id IN (?)", ids)
+
+// query = "SELECT * FROM users WHERE id IN (?)"  ← пока ?
+// args  = [1, 2, 3]
+
+query = db.Rebind(query)
+
+// query = "SELECT * FROM users WHERE id IN ($1, $2, $3)"  ← $1, $2, $3
+// args  = [1, 2, 3]
+
+db.Query(query, args...)
+```
+
+`Rebind` знает, с каким драйвером работает `*sqlx.DB`, и подставляет правильный синтаксис: `$1, $2` для PostgreSQL, `?` для MySQL. Вызывать `Rebind` нужно всегда после `sqlx.In`, если БД использует `$`-плейсхолдеры.
+
+### `sqlx` vs `database/sql`
+
+`sqlx` не скрывает `database/sql`. Пул соединений, транзакции, `Prepare` — всё на месте. Разница только в удобстве:
+
+| Операция | `database/sql` | `sqlx` |
+|---|---|---|
+| SELECT много строк | `rows.Next()` + `rows.Scan(&a, &b, &c)` | `db.Select(&slice, ...)` |
+| SELECT одна строка | `db.QueryRow(...).Scan(&a, &b, &c)` | `db.Get(&struct, ...)` |
+| INSERT с параметрами из структуры | Перечислять поля вручную | `db.NamedExec(...)` |
+| `IN (?, ?, ?)` | Строить вручную | `sqlx.In(...)` |
+
+### `sqlx.Tx` — транзакции
+
+```go
+tx, _ := db.Beginx()          // *sqlx.Tx вместо *sql.Tx
+defer tx.Rollback()
+
+tx.NamedExec(`INSERT INTO users (name, email) VALUES (:name, :email)`, user)
+tx.Select(&users, "SELECT * FROM users WHERE active = $1", true)
+
+tx.Commit()
+```
+
+Те же `Select`, `Get`, `NamedExec` — но в транзакции.
+
+> **Зачем это Go-разработчику.** `sqlx` — золотая середина между `database/sql` и ORM. Не прячет SQL, но убирает `Scan(&a, &b, &c, &d, &e)`. `Select` и `Get` сокращают рутину в 3 раза. `sqlx.In` решает проблему `IN`-клаузы, которая в чистом `database/sql` требует ручной сборки запроса. Если проект уже на `database/sql` — перейти на `sqlx` можно за час: методы совместимы.
 
 ***
 
 ## 12. `pgx`: нативный драйвер PostgreSQL
 
-<!-- Прямая работа с PostgreSQL, pgxpool, COPY, PostgreSQL-типы. -->
+[`pgx`](https://github.com/jackc/pgx) — это не просто драйвер, а полноценный клиент PostgreSQL на чистом Go. В отличие от `database/sql` + `pgx/stdlib`, нативный `pgx` даёт прямой доступ к PostgreSQL-специфичным возможностям: `COPY`, `LISTEN`/`NOTIFY`, массивы, JSONB, уведомления.
+
+`pgx` работает в двух режимах:
+
+| Режим | Пакет | Совместимость |
+|---|---|---|
+| Нативный | `github.com/jackc/pgx/v5` | Только PostgreSQL. Быстрее, больше возможностей |
+| Через `database/sql` | `github.com/jackc/pgx/v5/stdlib` | Совместим с `database/sql`, `sqlx`, ORM |
+
+До этого раздела мы использовали `pgx/stdlib` через `database/sql`. Здесь — нативный режим.
+
+***
+
+### Подключение: `pgxpool`
+
+Нативный `pgx` использует `pgxpool` — собственный пул соединений, оптимизированный под PostgreSQL:
 
 ```go
-// Пример pgx
+import (
+    "context"
+    "github.com/jackc/pgx/v5/pgxpool"
+)
+
+ctx := context.Background()
+
+pool, err := pgxpool.New(ctx, "postgres://user:pass@localhost:5432/mydb?sslmode=disable")
+if err != nil {
+    log.Fatal(err)
+}
+defer pool.Close()
+
+if err := pool.Ping(ctx); err != nil {
+    log.Fatal(err)
+}
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+`pgxpool.New` = `sql.Open` + `Ping` + настройка пула. Пул уже готов к работе.
+
+### Запросы: `Query`, `QueryRow`, `Exec`
+
+Интерфейс похож на `database/sql`, но с контекстом первым аргументом:
+
+```go
+// Множество строк
+rows, _ := pool.Query(ctx, "SELECT id, name FROM users WHERE active = $1", true)
+defer rows.Close()
+
+for rows.Next() {
+    var id int
+    var name string
+    rows.Scan(&id, &name)
+}
+
+// Одна строка
+var name string
+pool.QueryRow(ctx, "SELECT name FROM users WHERE id = $1", 42).Scan(&name)
+
+// Изменение данных
+tag, _ := pool.Exec(ctx, "UPDATE users SET name = $1 WHERE id = $2", "Alice", 1)
+fmt.Println(tag.RowsAffected()) // количество затронутых строк
+```
+
+### `CollectRows` — сбор строк в срез
+
+Вместо ручного цикла `rows.Next()` + `Scan` — `pgx.CollectRows` собирает результат напрямую в срез:
+
+```go
+rows, _ := pool.Query(ctx, "SELECT id, name FROM users")
+
+users, err := pgx.CollectRows(rows, pgx.RowToStructByName[User])
+// users — []User, заполненный автоматически
+```
+
+`RowToStructByName` находит поля структуры по именам столбцов (без тегов `db`, просто `Name string` → колонка `name`). Для JOIN с алиасами:
+
+```go
+type OrderWithUser struct {
+    OrderID int    // → колонка order_id (RowToStructByName)
+    Amount  float64
+    Name    string // → колонка name
+}
+```
+
+### PostgreSQL-специфичные типы
+
+`pgx` поддерживает типы, которых нет в `database/sql`:
+
+```go
+// Массивы
+var tags []string
+pool.QueryRow(ctx, "SELECT tags FROM users WHERE id = $1", 1).Scan(&tags)
+// tags = ["go", "postgresql", "backend"]
+
+// JSONB
+var metadata map[string]interface{}
+pool.QueryRow(ctx, "SELECT metadata FROM users WHERE id = $1", 1).Scan(&metadata)
+
+// UUID
+var id pgtype.UUID // или google/uuid
+pool.QueryRow(ctx, "SELECT id FROM users").Scan(&id)
+
+// INET (IP-адреса)
+var ip net.IP
+pool.QueryRow(ctx, "SELECT ip_address FROM sessions").Scan(&ip)
+```
+
+Стандартные `database/sql` типы (`sql.NullString`) работают, но pgx-типы (`pgtype.Text`, `pgtype.Int4`) эффективнее — без лишних аллокаций.
+
+### `COPY` — массовая вставка
+
+`COPY` — протокол PostgreSQL для сверхбыстрой пакетной загрузки. Быстрее `INSERT` в 5–10 раз:
+
+```go
+rows := [][]interface{}{
+    {"Alice", "alice@example.com"},
+    {"Bob", "bob@example.com"},
+    {"Charlie", "charlie@example.com"},
+}
+
+_, err := pool.CopyFrom(
+    ctx,
+    pgx.Identifier{"users"},
+    []string{"name", "email"},
+    pgx.CopyFromRows(rows),
+)
+```
+
+`CopyFromRows` принимает срез строк — каждая строка это `[]interface{}`. Для тысяч записей `COPY` — единственный правильный способ.
+
+### `LISTEN`/`NOTIFY` — асинхронные уведомления
+
+PostgreSQL умеет отправлять уведомления клиентам. `pgx` может их принимать:
+
+```go
+conn, _ := pool.Acquire(ctx)
+defer conn.Release()
+
+conn.Exec(ctx, "LISTEN user_created")
+
+for {
+    notification, _ := conn.Conn().WaitForNotification(ctx)
+    fmt.Printf("Канал: %s, данные: %s\n",
+        notification.Channel, notification.Payload)
+}
+```
+
+Другое приложение делает `NOTIFY user_created, 'user_id=42'` — и ваш код получает уведомление в реальном времени. Полезно для инвалидации кеша между сервисами.
+
+### `pgx` нативный vs `database/sql`
+
+| Возможность | `database/sql` + `pgx/stdlib` | Нативный `pgx` |
+|---|---|---|
+| Базовые запросы | ✅ | ✅ |
+| `COPY` | ❌ | ✅ |
+| PostgreSQL-типы (UUID, INET, JSONB) | Частично, через string | ✅ нативно |
+| `LISTEN`/`NOTIFY` | ❌ | ✅ |
+| `CollectRows` | ❌ (используйте `sqlx`) | ✅ |
+| Производительность | Базовая + оверхед `database/sql` | Быстрее, меньше аллокаций |
+| Совместимость с ORM/`sqlx` | ✅ | ❌ |
+
+> Правило: если проект только на PostgreSQL — берите нативный `pgx`. Если нужна совместимость с `sqlx`, GORM или потенциальная поддержка других БД — `pgx/stdlib` через `database/sql`.
+
+> **Зачем это Go-разработчику.** `pgx` — стандарт de facto для работы с PostgreSQL в Go. `COPY` даёт 5–10x прирост на массовых вставках. `CollectRows` заменяет `sqlx.Select`. `LISTEN`/`NOTIFY` позволяет строить реактивные системы без Kafka для простых сценариев. Если вы точно на PostgreSQL — нет причин использовать `database/sql` вместо нативного `pgx`.
 
 ***
 
 ## 13. ORM на примере GORM
 
-<!-- AutoMigrate, ассоциации, когда ORM полезен, а когда мешает. -->
+ORM (Object-Relational Mapping) — прослойка, которая отображает строки таблиц на Go-структуры, а SQL-запросы — на вызовы методов. [GORM](https://gorm.io) — самая популярная ORM для Go.
+
+Главное обещание ORM: «пиши на Go, SQL сгенерируется сам». Реальность: для простых CRUD-операций это правда, для сложных запросов — ORM мешает.
+
+***
+
+### Модели и `AutoMigrate`
+
+Модель — структура с GORM-тегами. `AutoMigrate` создаёт/обновляет таблицы автоматически:
 
 ```go
-// Пример GORM
+type User struct {
+    ID        uint   `gorm:"primaryKey"`
+    Name      string `gorm:"not null"`
+    Email     string `gorm:"uniqueIndex;not null"`
+    Orders    []Order `gorm:"foreignKey:UserID"`
+    CreatedAt time.Time
+}
+
+type Order struct {
+    ID     uint `gorm:"primaryKey"`
+    UserID uint
+    Amount float64
+}
+
+db.AutoMigrate(&User{}, &Order{})
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+`AutoMigrate` НЕ удаляет колонки и не меняет типы — только добавляет новые колонки и индексы. Для production-миграций используйте `golang-migrate`, а `AutoMigrate` — для разработки и тестов.
+
+### CRUD: Create, Read, Update, Delete
+
+```go
+// Create
+user := User{Name: "Alice", Email: "alice@example.com"}
+db.Create(&user) // user.ID заполнен после вставки
+
+// Read — одна запись
+var user User
+db.First(&user, 1)        // по первичному ключу
+db.First(&user, "email = ?", "alice@example.com") // по условию
+
+// Read — множество
+var users []User
+db.Where("name LIKE ?", "A%").Order("created_at desc").Limit(10).Find(&users)
+
+// Update
+db.Model(&user).Update("name", "Alice Johnson")
+db.Model(&user).Updates(User{Name: "Alice J.", Email: "alice@new.com"})
+
+// Delete
+db.Delete(&user, 1)
+```
+
+### Ассоциации
+
+GORM автоматически подгружает связанные записи через `Preload`:
+
+```go
+type User struct {
+    ID     uint
+    Name   string
+    Orders []Order `gorm:"foreignKey:UserID"`
+}
+
+type Order struct {
+    ID     uint
+    UserID uint
+    Amount float64
+}
+
+var user User
+db.Preload("Orders").First(&user, 1)
+// user.Orders заполнен: все заказы пользователя
+```
+
+Типы ассоциаций:
+
+| Отношение | Теги |
+|---|---|
+| Has Many | `User.Orders []Order gorm:"foreignKey:UserID"` |
+| Belongs To | `Order.User User gorm:"foreignKey:UserID"` |
+| Has One | `User.Profile Profile gorm:"foreignKey:UserID"` |
+| Many To Many | `User.Languages []Language gorm:"many2many:user_languages"` |
+
+### Preload vs N+1
+
+**N+1** — антипаттерн: сначала грузите пользователей, потом для каждого идёте в БД за заказами.
+
+```go
+// ПЛОХО: 1 запрос за пользователями + N запросов за заказами каждого
+var users []User
+db.Find(&users) // SELECT * FROM users
+
+for i := range users {
+    db.Model(&users[i]).Association("Orders").Find(&users[i].Orders)
+    // SELECT * FROM orders WHERE user_id = ?
+}
+```
+
+10 пользователей = 1 + 10 = 11 запросов. 1000 пользователей = 1001 запрос.
+
+```go
+// ХОРОШО: 2 запроса (JOIN или два SELECT с IN)
+var users []User
+db.Preload("Orders").Find(&users)
+// 1. SELECT * FROM users
+// 2. SELECT * FROM orders WHERE user_id IN (1, 2, 3, ..., 1000)
+```
+
+`Preload` собирает все ID пользователей и делает ОДИН запрос за всеми заказами.
+
+> Всегда используйте `Preload` для ассоциаций. Без него связанные поля остаются пустыми до явного обращения — что и приводит к N+1.
+
+### Транзакции в GORM
+
+```go
+db.Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&user).Error; err != nil {
+        return err // автоматический Rollback
+    }
+
+    order := Order{UserID: user.ID, Amount: 100}
+    if err := tx.Create(&order).Error; err != nil {
+        return err // автоматический Rollback
+    }
+
+    return nil // Commit
+})
+```
+
+Возврат ошибки из замыкания → автоматический `Rollback`. `return nil` → `Commit`. Удобно, но скрывает логику транзакции за замыканием.
+
+### Когда ORM полезен, а когда мешает
+
+**Полезен:**
+
+- Простые CRUD-операции: Create, Find, Update, Delete без сложных JOIN
+- Прототипирование и MVP — скорость разработки выше
+- Команда боится SQL или нет выделенного DBA
+
+**Мешает:**
+
+- Сложные запросы с JOIN, подзапросами, оконными функциями
+- Оптимизация — ORM генерирует неоптимальный SQL, а доступа к плану запроса нет
+- Большие проекты — накопленные костыли вокруг ORM перевешивают начальную выгоду
+- `AutoMigrate` в production — риск потерять данные
+
+### GORM vs sqlx vs database/sql
+
+| Подход | Когда |
+|---|---|
+| `database/sql` | Максимальный контроль. Микросервисы с простыми запросами |
+| `sqlx` | Золотая середина. SQL пишете вы, маппинг — библиотека |
+| GORM | Прототипы, CRUD-heavy приложения без сложной аналитики |
+
+> **Зачем это Go-разработчику.** GORM экономит время на старте, но за сложность запросов приходится платить дважды: сначала обходом ограничений ORM, потом переписыванием на сырой SQL. Если пишете production-сервис на годы — начните с `sqlx` или `pgx`. Если прототип на неделю — GORM. И никогда не полагайтесь на `AutoMigrate` в production.
 
 ***
 
 ## 14. Паттерн репозиторий
 
-<!-- Абстракция над БД, интерфейсы, внедрение зависимостей, тестирование через моки. -->
+Репозиторий — прослойка между бизнес-логикой и базой данных. Вместо того чтобы вызывать `db.Query` прямо из обработчика HTTP, вы прячете SQL за интерфейсом.
+
+Зачем:
+- **Тестируемость** — подменяете реальный репозиторий моком, никакой базы для тестов не нужно
+- **Изоляция** — бизнес-логика не знает, откуда берутся данные: PostgreSQL, кеш, внешний API
+- **Переиспользование** — один метод `GetUserByID` вместо разбросанных `db.QueryRow` по всему коду
+
+***
+
+### Интерфейс
 
 ```go
-// Пример репозитория
+type User struct {
+    ID    int
+    Name  string
+    Email string
+}
+
+type UserRepository interface {
+    GetByID(ctx context.Context, id int) (*User, error)
+    Create(ctx context.Context, user *User) error
+    List(ctx context.Context, limit, offset int) ([]User, error)
+}
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Интерфейс описывает ЧТО делает репозиторий. Реализация — КАК.
+
+### Реализация на `sqlx`
+
+```go
+type userRepository struct {
+    db *sqlx.DB
+}
+
+func NewUserRepository(db *sqlx.DB) UserRepository {
+    return &userRepository{db: db}
+}
+
+func (r *userRepository) GetByID(ctx context.Context, id int) (*User, error) {
+    var user User
+    err := r.db.GetContext(ctx, &user,
+        "SELECT id, name, email FROM users WHERE id = $1", id)
+    if err == sql.ErrNoRows {
+        return nil, nil // нет пользователя — не ошибка
+    }
+    return &user, err
+}
+
+func (r *userRepository) Create(ctx context.Context, user *User) error {
+    return r.db.QueryRowContext(ctx,
+        "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
+        user.Name, user.Email,
+    ).Scan(&user.ID)
+}
+
+func (r *userRepository) List(ctx context.Context, limit, offset int) ([]User, error) {
+    var users []User
+    err := r.db.SelectContext(ctx, &users,
+        "SELECT id, name, email FROM users ORDER BY id LIMIT $1 OFFSET $2",
+        limit, offset)
+    return users, err
+}
+```
+
+Ключевые решения:
+- Неэкспортируемая структура `userRepository` — снаружи только интерфейс
+- Конструктор `NewUserRepository` возвращает интерфейс, а не структуру
+- `*Context`-методы `sqlx` — поддержка таймаутов и отмены через контекст
+- `ErrNoRows` → `nil, nil` — отсутствие записи не ошибка
+
+### Внедрение зависимостей
+
+```go
+type UserService struct {
+    repo UserRepository
+}
+
+func NewUserService(repo UserRepository) *UserService {
+    return &UserService{repo: repo}
+}
+
+func (s *UserService) GetUser(ctx context.Context, id int) (*User, error) {
+    user, err := s.repo.GetByID(ctx, id)
+    if err != nil {
+        return nil, fmt.Errorf("get user: %w", err)
+    }
+    if user == nil {
+        return nil, ErrNotFound
+    }
+    return user, nil
+}
+```
+
+Сервис зависит от интерфейса, а не от конкретной реализации. В production передаётся `NewUserRepository(db)`, в тестах — мок.
+
+### Тестирование с моком
+
+```go
+type mockUserRepository struct {
+    users map[int]*User
+}
+
+func (m *mockUserRepository) GetByID(ctx context.Context, id int) (*User, error) {
+    user, ok := m.users[id]
+    if !ok {
+        return nil, nil
+    }
+    return user, nil
+}
+
+func (m *mockUserRepository) Create(ctx context.Context, user *User) error {
+    user.ID = len(m.users) + 1
+    m.users[user.ID] = user
+    return nil
+}
+
+func (m *mockUserRepository) List(ctx context.Context, limit, offset int) ([]User, error) {
+    // ... реализация
+}
+
+func TestUserService_GetUser(t *testing.T) {
+    repo := &mockUserRepository{
+        users: map[int]*User{
+            1: {ID: 1, Name: "Alice", Email: "alice@example.com"},
+        },
+    }
+    svc := NewUserService(repo)
+
+    user, err := svc.GetUser(context.Background(), 1)
+    assert.NoError(t, err)
+    assert.Equal(t, "Alice", user.Name)
+}
+```
+
+Репозиторий-мок — обычная мапа. Никакой БД, никаких контейнеров. Тест проходит за микросекунды.
+
+### Когда использовать
+
+**Используйте репозиторий:**
+- Сервис содержит бизнес-логику, которую нужно тестировать изолированно
+- Один и тот же запрос вызывается из нескольких мест
+- Вы меняли БД (MySQL → PostgreSQL) и хотите заменить только слой доступа
+
+**Не используйте репозиторий:**
+- Сервис — тонкая обёртка над одним SQL-запросом (YAGNI)
+- Прототип из 3 эндпоинтов — интерфейс + мок займут больше кода, чем бизнес-логика
+
+### Репозиторий + транзакции
+
+Транзакции проходят сквозь репозиторий через передачу `*sql.Tx`:
+
+```go
+type UserRepository interface {
+    GetByIDTx(ctx context.Context, tx *sqlx.Tx, id int) (*User, error)
+    CreateTx(ctx context.Context, tx *sqlx.Tx, user *User) error
+}
+
+func (r *userRepository) CreateTx(ctx context.Context, tx *sqlx.Tx, user *User) error {
+    return tx.QueryRowContext(ctx,
+        "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
+        user.Name, user.Email,
+    ).Scan(&user.ID)
+}
+
+// В сервисе:
+func (s *UserService) TransferMoney(ctx context.Context, fromID, toID int, amount float64) error {
+    tx, _ := s.db.Beginx()
+    defer tx.Rollback()
+
+    // ... операции через s.userRepo.CreateTx(ctx, tx, ...) и s.accountRepo.UpdateBalanceTx(ctx, tx, ...)
+
+    return tx.Commit()
+}
+```
+
+Альтернатива — передавать `*sqlx.Tx` через `context.Context`, но явная передача читается лучше и безопаснее компилятором.
+
+> **Зачем это Go-разработчику.** Репозиторий — паттерн номер один для тестируемого кода с БД. Без него тест бизнес-логики требует поднятия PostgreSQL в Docker. С ним — мок на мапе, тест за микросекунды. Интерфейс → мок — фундаментальный приём в Go, и репозиторий его идеально иллюстрирует.
 
 ***
 
 ## 15. SQL-инъекции и безопасность
 
-<!-- Параметризованные запросы, почему нельзя склеивать SQL из строк. -->
+SQL-инъекция — уязвимость номер один для приложений с БД. Злоумышленник передаёт SQL-код в строковом параметре, и приложение выполняет его. Один неосторожный `fmt.Sprintf` — и данные утекли, таблицы удалены, сервер скомпрометирован.
+
+Механизм защиты раскрыт в разделе 8 (подготовленные выражения). Здесь — полная картина угроз и способов защиты.
+
+***
+
+### Как работает инъекция
+
+Уязвимый код — подстановка пользовательского ввода напрямую в SQL:
 
 ```go
-// Пример защиты от инъекций
+// УЯЗВИМО
+userInput := r.URL.Query().Get("id")
+query := fmt.Sprintf("SELECT * FROM users WHERE id = %s", userInput)
+db.Query(query)
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+| Вход | Что выполнит БД |
+|---|---|
+| `42` | `SELECT * FROM users WHERE id = 42` — норма |
+| `1 OR 1=1` | `SELECT * FROM users WHERE id = 1 OR 1=1` — **все строки** |
+| `1; DROP TABLE users; --` | Два запроса: SELECT и **DROP TABLE** |
+| `1 UNION SELECT email, password FROM admins` | UNION-инъекция: утечка паролей |
+
+Безопасная альтернатива — плейсхолдеры:
+
+```go
+db.Query("SELECT * FROM users WHERE id = $1", userInput)
+// userInput = "1; DROP TABLE users;" → БД ищет id = '1; DROP TABLE users;'
+// Это просто строка, не SQL-команда
+```
+
+Плейсхолдер отделяет SQL-код от данных. Параметр **никогда** не интерпретируется как часть запроса.
+
+### Типы инъекций
+
+| Тип | Пример | Защита |
+|---|---|---|
+| **Classic SQLi** | `' OR '1'='1` в поле входа | Плейсхолдеры |
+| **UNION-based** | `1 UNION SELECT ...` — кража данных из других таблиц | Плейсхолдеры |
+| **Blind SQLi** | `1 AND (SELECT length(password) FROM users LIMIT 1) > 10` — угадывание по ответам true/false | Плейсхолдеры |
+| **Second-order** | Злоумышленник сохраняет `'; DROP TABLE--` в поле имени, которое позже подставляется в другой запрос | Плейсхолдеры везде, даже при чтении собственных данных |
+| **Имена таблиц/колонок** | `?orderBy=name; DROP TABLE--` → `ORDER BY name; DROP TABLE--` | Белые списки значений |
+
+### Инъекции через имена таблиц и колонок
+
+Плейсхолдеры защищают **значения**, но не имена таблиц/колонок. Для сортировки и фильтрации по имени колонки — белый список:
+
+```go
+var allowedColumns = map[string]bool{
+    "id":   true,
+    "name": true,
+    "created_at": true,
+}
+
+func listUsers(db *sql.DB, orderBy string) ([]User, error) {
+    if !allowedColumns[orderBy] {
+        return nil, fmt.Errorf("invalid column: %s", orderBy)
+    }
+    // Безопасно: orderBy проверен по белому списку
+    query := fmt.Sprintf("SELECT * FROM users ORDER BY %s", orderBy)
+    return db.Query(query)
+}
+```
+
+> Никогда не подставляйте пользовательский ввод в SQL, даже косвенно. Белый список — единственный безопасный способ для имён столбцов.
+
+### Что ещё, кроме плейсхолдеров
+
+Плейсхолдеры — основа, но не всё:
+
+1. **Никаких секретов в логах.** Не логируйте SQL с подставленными параметрами — там могут быть пароли, токены, персональные данные.
+2. **Минимальные привилегии.** Приложение должно подключаться к БД под пользователем с минимумом прав: `SELECT`, `INSERT`, `UPDATE`, `DELETE` на свои таблицы. Не `SUPERUSER`, не владелец базы.
+3. **SSL/TLS между приложением и БД.** `sslmode=verify-full` в production (раздел 5). Без него SQL-запросы идут открытым текстом.
+4. **Валидация на входе.** Длина строки, формат email, диапазон чисел — до того как данные попадут в SQL.
+5. **`database/sql` экранирует.** Не изобретайте своё экранирование — используйте плейсхолдеры, они делают это правильно для каждого драйвера.
+
+### Инъекция через LIKE
+
+`LIKE` имеет свои спецсимволы: `%` (любая подстрока) и `_` (один символ). Если пользователь вводит `%`, поиск возвращает всё:
+
+```go
+// Опасность: поиск по '%%' вернёт все строки
+db.Query("SELECT * FROM users WHERE name LIKE $1", "%"+userInput+"%")
+
+// Безопасно: экранировать спецсимволы LIKE
+escaped := strings.ReplaceAll(userInput, "%", "\\%")
+escaped = strings.ReplaceAll(escaped, "_", "\\_")
+db.Query("SELECT * FROM users WHERE name LIKE $1 ESCAPE '\\'", "%"+escaped+"%")
+```
+
+### Проверка в CI/CD
+
+Автоматизируйте поиск уязвимостей:
+- [`gosec`](https://github.com/securego/gosec) — находит `fmt.Sprintf` c SQL в коде
+- [`sqlint`](https://github.com/srcclr/sqlint) — проверяет SQL-строки
+- Правило в линтере: запретить `fmt.Sprintf` в комбинации с `Query`/`Exec`
+
+> **Зачем это Go-разработчику.** SQL-инъекция — не теория из учебника. OWASP ставит её на 3-е место среди всех веб-уязвимостей. Одна забытая конкатенация строк — и база данных скомпрометирована. Плейсхолдеры решают 95% проблем, белые списки — оставшиеся 5% (имена колонок). Автоматизируйте проверки в CI: `gosec` найдёт `fmt.Sprintf` в SQL-контексте до того, как код попадёт в production.
 
 ***
 
 ## 16. Производительность
 
-<!-- Индексы, EXPLAIN ANALYZE, N+1, pg_stat_statements, настройка пула. -->
+Медленные запросы убивают приложение быстрее, чем отсутствие фич. Три кита производительности БД: индексы, анализ плана запроса и мониторинг.
 
-```go
-// EXPLAIN, настройки пула
+***
+
+### Индексы
+
+Индекс — структура данных, которая позволяет БД находить строки без полного перебора таблицы. Как алфавитный указатель в книге: вместо пролистывания всех страниц — открыл указатель, увидел номер страницы, перешёл.
+
+```sql
+-- Без индекса: последовательное сканирование (Seq Scan) всей таблицы
+-- SELECT * FROM users WHERE email = 'alice@example.com' -- миллионы строк → минуты
+
+-- С индексом: поиск по B-дереву
+CREATE INDEX idx_users_email ON users(email);
+
+-- SELECT * FROM users WHERE email = 'alice@example.com' -- миллионы строк → миллисекунды
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+**Типы индексов в PostgreSQL:**
+
+| Тип | Для чего | Пример |
+|---|---|---|
+| B-tree (по умолчанию) | Равенство, диапазоны, сортировка | `WHERE id = 5`, `WHERE created_at > '...'` |
+| GIN | Полнотекстовый поиск, массивы, JSONB | `WHERE tags @> ARRAY['go']` |
+| GiST | Геометрия, полнотекстовый поиск | `WHERE geom && 'POINT(...)'` |
+| BRIN | Очень большие таблицы с коррелированными данными | `WHERE created_at BETWEEN ...` |
+| Hash | Только равенство (редко используется) | `WHERE email = '...'` |
+
+**Когда индекс НЕ работает:**
+
+- `WHERE LOWER(email) = '...'` — функция на колонке отключает индекс. Решение: индекс на выражение `CREATE INDEX idx ON users(LOWER(email))`
+- `WHERE name LIKE '%Alice'` — поиск по подстроке с начала строки. B-tree работает только с префиксом: `LIKE 'Alice%'`
+- Маленькие таблицы (<1000 строк) — Seq Scan быстрее индекса
+
+**Составные индексы** для запросов с несколькими условиями:
+
+```sql
+-- Запрос: WHERE user_id = ? AND status = ? ORDER BY created_at
+CREATE INDEX idx_orders_user_status_created ON orders(user_id, status, created_at);
+```
+
+Порядок колонок важен: сначала условия равенства (`user_id`, `status`), потом сортировка (`created_at`).
+
+### `EXPLAIN ANALYZE` — план запроса
+
+Показывает, КАК БД выполняет запрос и сколько это стоит:
+
+```sql
+EXPLAIN ANALYZE
+SELECT u.name, COUNT(o.id) AS order_count
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE u.active = true
+GROUP BY u.name;
+```
+
+```
+ HashAggregate  (cost=150.30..152.42 rows=200 width=36) (actual time=3.221..3.440 rows=180 loops=1)
+   ->  Hash Left Join  (cost=25.15..125.55 rows=4950 width=32) (actual time=0.123..2.891 rows=4850 loops=1)
+         ->  Seq Scan on users u  (cost=0.00..18.50 rows=200 width=10) (actual time=0.012..0.045 rows=200 loops=1)
+               Filter: active
+         ->  Hash  (cost=18.00..18.00 rows=400 width=14) (actual time=0.089..0.089 rows=400 loops=1)
+               ->  Seq Scan on orders o  (cost=0.00..18.00 rows=400 width=14) (actual time=0.010..0.045 rows=400 loops=1)
+```
+
+Что смотреть:
+- **Seq Scan** (последовательное сканирование) на большой таблице — плохо, нужен индекс
+- **cost=0.00..18.50** — оценка стоимости. Первое число — старт, второе — общая. Чем меньше, тем лучше
+- **actual time** — реальное время. Если сильно отличается от cost — статистика устарела, сделайте `ANALYZE`
+- **rows** — оценка vs реальность. Большое расхождение → неверный план
+
+> Перед добавлением индекса всегда проверяйте `EXPLAIN ANALYZE`. Не угадывайте — измеряйте.
+
+### N+1: проблема и решение
+
+N+1 — когда вместо одного запроса с JOIN выполняется 1 + N запросов. Детально разобрано в разделе 13 (GORM/Preload), здесь — общий случай.
+
+```go
+// N+1: 1 запрос за пользователями + N запросов за заказами
+rows, _ := db.Query("SELECT id, name FROM users")
+var users []User
+for rows.Next() {
+    var u User
+    rows.Scan(&u.ID, &u.Name)
+    
+    // Для каждого пользователя — отдельный запрос в БД
+    db.Query("SELECT * FROM orders WHERE user_id = $1", u.ID)
+    users = append(users, u)
+}
+```
+
+Решение — один запрос с JOIN или два запроса с `WHERE IN`:
+
+```sql
+-- Вариант 1: JOIN (возвращает денормализованные данные)
+SELECT u.id, u.name, o.id AS order_id, o.amount
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+
+-- Вариант 2: два запроса (данные собираются в коде)
+SELECT id, name FROM users
+SELECT id, user_id, amount FROM orders WHERE user_id = ANY($1)
+```
+
+### `pg_stat_statements` — мониторинг запросов
+
+Расширение PostgreSQL, которое собирает статистику по всем запросам:
+
+```sql
+CREATE EXTENSION pg_stat_statements;
+
+-- Самые медленные запросы (среднее время)
+SELECT query, calls, mean_exec_time, total_exec_time
+FROM pg_stat_statements
+ORDER BY mean_exec_time DESC
+LIMIT 10;
+
+-- Самые частые запросы
+SELECT query, calls, total_exec_time
+FROM pg_stat_statements
+ORDER BY calls DESC
+LIMIT 10;
+```
+
+Интегрируйте в мониторинг: Grafana + Prometheus + `pg_stat_statements` дают полную картину по медленным запросам.
+
+### Пул соединений и производительность
+
+Настройки пула из раздела 6 напрямую влияют на производительность:
+
+| Симптом | Причина | Решение |
+|---|---|---|
+| Растёт `WaitCount` в `db.Stats()` | `MaxOpenConns` слишком мал | Увеличить `MaxOpenConns` |
+| `WaitDuration` > 100ms | Запросы долгие или пул мал | Оптимизация запросов + увеличить пул |
+| Много idle-соединений | `MaxIdleConns` завышен | Снизить до 10–25 |
+| Ошибки таймаута соединения | `ConnMaxLifetime` не настроен | Выставить 30–60m |
+
+### Быстрые проверки
+
+1. **Медленный запрос** → `EXPLAIN ANALYZE` → есть Seq Scan на большой таблице? → индекс
+2. **Растёт нагрузка** → `db.Stats()` → `WaitCount` растёт? → увеличить пул или кешировать
+3. **N+1 в логах** → много одинаковых запросов подряд → JOIN или batch-загрузка
+4. **Индекс не используется** → функция на колонке или не тот тип индекса → индекс на выражение
+
+> **Зачем это Go-разработчику.** Индексы и `EXPLAIN ANALYZE` — не «забота DBA». В стартапе DBA нет — есть вы. Медленный запрос в production обнаруживается не глазами, а через `pg_stat_statements` и алерты. N+1 — самая частая причина деградации под нагрузкой: на 10 пользователях незаметно, на 10000 — отказ. Индекс на поле, по которому ищете, — первое, что нужно сделать перед выкаткой фичи.
 
 ***
 
 ## 17. Тестирование с базой данных
 
-<!-- testcontainers-go, транзакционные тесты, фикстуры. -->
+Для unit-тестов бизнес-логики используйте моки репозиториев (раздел 14). Но иногда нужны тесты с НАСТОЯЩЕЙ базой: миграции, сложные SQL-запросы, триггеры, блокировки. Два основных подхода: testcontainers и транзакционные тесты.
+
+***
+
+### `testcontainers-go` — база в Docker
+
+[testcontainers-go](https://golang.testcontainers.org) поднимает контейнер с PostgreSQL прямо в тесте. Никакой внешней БД, никаких «запусти docker-compose перед тестами»:
 
 ```go
-// Пример теста с testcontainers
+import (
+    "context"
+    "testing"
+    "github.com/testcontainers/testcontainers-go"
+    "github.com/testcontainers/testcontainers-go/modules/postgres"
+)
+
+func TestWithRealDB(t *testing.T) {
+    ctx := context.Background()
+
+    // Поднять PostgreSQL 16
+    pg, err := postgres.RunContainer(ctx,
+        testcontainers.WithImage("postgres:16-alpine"),
+        postgres.WithDatabase("testdb"),
+        postgres.WithUsername("test"),
+        postgres.WithPassword("test"),
+    )
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer pg.Terminate(ctx) // контейнер удалится после теста
+
+    // Получить connection string
+    connStr, _ := pg.ConnectionString(ctx)
+    // connStr = "postgres://test:test@localhost:54321/testdb?sslmode=disable"
+
+    db, _ := sql.Open("pgx", connStr)
+    defer db.Close()
+
+    // Применить миграции
+    runMigrations(db)
+
+    // Тестировать как с реальной БД
+    _, err = db.Exec("INSERT INTO users (name, email) VALUES ($1, $2)", "Alice", "alice@example.com")
+    if err != nil {
+        t.Fatal(err)
+    }
+}
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Плюсы:
+- **Настоящая БД** — точь-в-точь как в production, включая особенности диалекта
+- **Изоляция** — каждый тест (или пакет) получает чистую базу
+- **CI/CD** — работает везде, где есть Docker
+
+Минусы:
+- **Медленно** — запуск контейнера 2–5 секунд. Для сотен тестов — минуты
+- **Docker в CI** — нужен настроенный Docker-раннер
+
+### Транзакционные тесты
+
+Альтернатива для скорости: один раз поднять БД на весь пакет, каждый тест — в отдельной транзакции с откатом:
+
+```go
+var testDB *sql.DB
+
+func TestMain(m *testing.M) {
+    // Один раз подключиться к тестовой БД
+    var err error
+    testDB, err = sql.Open("pgx", "postgres://test:test@localhost:5432/testdb?sslmode=disable")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer testDB.Close()
+
+    runMigrations(testDB) // применить миграции один раз
+    os.Exit(m.Run())
+}
+
+func TestCreateUser(t *testing.T) {
+    tx, err := testDB.Begin()
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer tx.Rollback() // ОТКАТ в конце — БД чиста для следующего теста
+
+    // Тест в транзакции
+    _, err = tx.Exec("INSERT INTO users (name, email) VALUES ($1, $2)", "Alice", "alice@example.com")
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    var name string
+    tx.QueryRow("SELECT name FROM users WHERE email = $1", "alice@example.com").Scan(&name)
+    if name != "Alice" {
+        t.Errorf("expected Alice, got %s", name)
+    }
+
+    // Rollback при выходе — Алиса не останется в БД
+}
+```
+
+Ключевые моменты:
+- `TestMain` — один раз на весь пакет: подключиться, прогнать миграции
+- Каждый тест: `Begin()` → `defer Rollback()` → тест → автоматический откат
+- После теста БД чиста — другие тесты не видят чужих данных
+
+> Будьте осторожны: код, который делает `Commit` внутри тестируемой функции, сломает изоляцию. Используйте транзакционные тесты только для кода, который не управляет транзакциями сам.
+
+### Фикстуры — наполнение данными
+
+Перед тестом нужно заполнить БД известными данными. Два способа:
+
+**SQL-фикстуры** — файл с INSERT'ами:
+
+```sql
+-- fixtures/users.sql
+INSERT INTO users (id, name, email) VALUES
+    (1, 'Alice', 'alice@example.com'),
+    (2, 'Bob',   'bob@example.com');
+```
+
+```go
+func loadFixture(tx *sql.Tx, path string) {
+    sql, _ := os.ReadFile(path)
+    tx.Exec(string(sql))
+}
+```
+
+**Хелперы** — Go-функции для создания тестовых данных:
+
+```go
+func createTestUser(tx *sql.Tx, name string) *User {
+    var id int
+    tx.QueryRow("INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
+        name, name+"@test.com").Scan(&id)
+    return &User{ID: id, Name: name, Email: name + "@test.com"}
+}
+```
+
+### Тестирование миграций
+
+Миграции нужно тестировать отдельно — это самый опасный код в проекте:
+
+```go
+func TestMigrations(t *testing.T) {
+    ctx := context.Background()
+    pg, _ := postgres.RunContainer(ctx, testcontainers.WithImage("postgres:16-alpine"),
+        postgres.WithDatabase("testdb"), postgres.WithUsername("test"), postgres.WithPassword("test"))
+    defer pg.Terminate(ctx)
+
+    connStr, _ := pg.ConnectionString(ctx)
+
+    // Применить все миграции
+    m, _ := migrate.New("file://migrations", connStr)
+    m.Up()
+
+    // Откатить последнюю
+    m.Steps(-1)
+
+    // Применить снова (проверяем, что down реально откатил)
+    m.Up()
+}
+```
+
+### Мок vs реальная БД
+
+| Подход | Когда |
+|---|---|
+| **Мок репозитория** (раздел 14) | Тест бизнес-логики. Быстро, детерминировано |
+| **Транзакционный тест** | Тест SQL-запроса, миграции. Быстрее testcontainers |
+| **testcontainers** | Полный интеграционный тест. Особенности диалекта, триггеры, расширения |
+
+Правило: unit-тесты → мок. SQL-тесты → транзакции. Интеграционные тесты → testcontainers. Не используйте testcontainers там, где достаточно мока.
+
+> **Зачем это Go-разработчику.** Тестирование с БД — не опция, а требование. Миграция с опечаткой в имени колонки не упадёт при компиляции — только в рантайме. Транзакционные тесты дают баланс скорости и достоверности: одна БД на пакет, откат после каждого теста. Testcontainers — золотой стандарт для интеграционных тестов: «в CI точно так же, как в production». Начните с транзакционных тестов для SQL, добавьте testcontainers для миграций и сложных сценариев.
+
+***
+
+## 18. SQLite — встраиваемая база данных
+
+SQLite — реляционная БД, которая хранится в одном файле (или в памяти) и не требует отдельного сервера. Библиотека SQLite вкомпилирована в приложение — никаких портов, демонов и подключений по сети.
+
+В Go SQLite используется через драйвер [`mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3) (CGO, быстрее) или [`modernc.org/sqlite`](https://gitlab.com/cznic/sqlite) (чистый Go, без CGO):
+
+```go
+import (
+    "database/sql"
+    _ "modernc.org/sqlite" // чистый Go, работает без CGO
+)
+
+db, _ := sql.Open("sqlite", "file:app.db?_journal_mode=WAL")
+```
+
+Ключевое отличие: connection string — путь к файлу, а не сетевой адрес.
+
+***
+
+### Когда использовать SQLite
+
+| Сценарий | Почему SQLite |
+|---|---|
+| Локальные приложения (CLI, desktop) | Не нужен сервер БД — один бинарник, один файл |
+| Тесты | Мгновенный запуск, не нужен Docker |
+| Встраиваемые системы, IoT | Минимальные ресурсы, нет сети |
+| Прототипы и MVP | Ноль настройки — `:memory:` для временной БД |
+| Кеширование и промежуточные данные | Файловая БД быстрее сетевого вызова |
+
+**Когда НЕ использовать:**
+- Многопользовательские веб-приложения (конкурентная запись ограничена)
+- Большие объёмы данных (> 1 ТБ)
+- Высокая частота конкурентных записей
+
+### Режимы работы
+
+**Файловая БД** — данные живут в одном файле:
+
+```go
+db, _ := sql.Open("sqlite", "file:myapp.db?_journal_mode=WAL&_foreign_keys=on")
+```
+
+Параметры в connection string:
+
+| Параметр | Зачем |
+|---|---|
+| `_journal_mode=WAL` | Write-Ahead Log — конкурентное чтение при записи |
+| `_foreign_keys=on` | Включить внешние ключи (по умолчанию выключены!) |
+| `_busy_timeout=5000` | Ждать 5 секунд при блокировке вместо мгновенной ошибки |
+
+**WAL-режим.** В SQLite есть два режима журналирования: rollback journal (по умолчанию) и WAL.
+
+В rollback-режиме читатели БЛОКИРУЮТ писателя и наоборот: пока один читает, никто не может писать. Для однопоточного приложения это нормально, для веб-сервера с конкурентными запросами — нет.
+
+WAL (Write-Ahead Log) решает это: изменения пишутся в отдельный WAL-файл, а не напрямую в основную БД. Читатели работают с основной БД, писатель — с WAL-файлом. Результат: читатели и писатель не блокируют друг друга.
+
+```
+Без WAL:  читатель → [БД заблокирована] ← писатель ждёт
+С WAL:    читатель → [основной файл БД]
+          писатель → [WAL-файл]       ← параллельно!
+```
+
+Периодически WAL-файл сливается с основной БД (checkpoint). Для 99% приложений на SQLite WAL — обязательный режим. Всегда добавляйте `_journal_mode=WAL` в connection string.
+
+**В памяти** — БД исчезает при закрытии соединения:
+
+```go
+db, _ := sql.Open("sqlite", ":memory:")
+```
+
+Идеально для тестов: не нужно чистить файлы после прогона.
+
+### SQLite и `database/sql`
+
+SQLite работает через `database/sql` — те же `db.Query`, `db.Exec`, транзакции. Но есть нюансы:
+
+**Плейсхолдеры: `?` вместо `$1`.** SQLite использует вопросительные знаки:
+
+```go
+db.Query("SELECT * FROM users WHERE id = ?", 42) // правильно
+db.Query("SELECT * FROM users WHERE id = $1", 42) // ОШИБКА в SQLite
+```
+
+**Типы данных: гибкая типизация.** SQLite не требует указывать тип колонки жёстко — но тип хранится для каждого значения. Основные mapped-типы:
+
+| SQLite-тип | Go-тип |
+|---|---|
+| INTEGER | `int64` |
+| REAL | `float64` |
+| TEXT | `string` |
+| BLOB | `[]byte` |
+| NULL | `nil` (указатели или `sql.NullString`) |
+
+### Тесты с SQLite
+
+SQLite в памяти — быстрая альтернатива testcontainers для тестов, не требующих специфики PostgreSQL:
+
+```go
+func TestWithSQLite(t *testing.T) {
+    db, _ := sql.Open("sqlite", ":memory:")
+    defer db.Close()
+
+    // Создать схему
+    db.Exec(`CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL
+    )`)
+
+    // Тестировать
+    db.Exec("INSERT INTO users (name, email) VALUES (?, ?)", "Alice", "alice@example.com")
+
+    var name string
+    db.QueryRow("SELECT name FROM users WHERE email = ?", "alice@example.com").Scan(&name)
+
+    if name != "Alice" {
+        t.Errorf("expected Alice, got %s", name)
+    }
+    // Никакой очистки — :memory: исчезает с Close()
+}
+```
+
+Плюсы против testcontainers:
+- **Скорость** — запуск мгновенный, без Docker
+- **Простота** — не нужен Docker в CI
+- **Детерминированность** — изолированное состояние на каждый тест
+
+Минусы:
+- Не PostgreSQL — не проверить специфичные для PG фичи (JSONB, `COPY`, `LISTEN/NOTIFY`)
+- Нет проверки реального диалекта — можно случайно использовать синтаксис PostgreSQL, который в production упадёт
+
+### Ограничения SQLite
+
+1. **Конкурентная запись.** Только один пишущий в один момент. WAL-режим смягчает это (читатели не блокируют писателя), но для высоконагруженных систем с множеством параллельных записей SQLite не подходит.
+2. **Типы данных.** Нет `DECIMAL`, `JSONB`, `ARRAY`, `ENUM`. Всё хранится как INTEGER/REAL/TEXT/BLOB.
+3. **Нет сетевого доступа.** SQLite — встраиваемая БД. Несколько сервисов не могут подключиться к одной БД.
+4. **Миграции.** `ALTER TABLE` ограничен: нельзя удалить колонку (до версии 3.35), переименовать можно не всё.
+
+> **Зачем это Go-разработчику.** SQLite — идеальный компаньон для Go: один бинарник, один файл БД, никаких внешних зависимостей. Тесты на SQLite в памяти проходят мгновенно и не требуют Docker. Но не заменяйте PostgreSQL на SQLite в production бездумно: конкурентная запись и отсутствие PG-специфичных типов быстро станут проблемой. Правило: SQLite для локального/встраиваемого, PostgreSQL для серверного.
+
+***
+
+## Источники
+
+### Официальная документация
+
+* [pkg.go.dev/database/sql](https://pkg.go.dev/database/sql) — полная документация пакета `database/sql`
+* [pkg.go.dev/database/sql/driver](https://pkg.go.dev/database/sql/driver) — интерфейс для реализации драйверов
+* [Go Wiki: SQLDrivers](https://github.com/golang/go/wiki/SQLDrivers) — список всех драйверов баз данных для Go
+* [Go Wiki: SQLInterface](https://github.com/golang/go/wiki/SQLInterface) — примеры использования `database/sql`
+* [PostgreSQL Documentation](https://www.postgresql.org/docs/current/) — официальная документация PostgreSQL
+* [SQLite Documentation](https://www.sqlite.org/docs.html) — официальная документация SQLite
+
+### `database/sql`, `sqlx`, `pgx`
+
+* [sqlx: иллюстрированный гайд](https://jmoiron.github.io/sqlx/) — Jason Moiron, автор `sqlx`
+* [pgx: PostgreSQL Driver and Toolkit](https://github.com/jackc/pgx) — репозиторий `pgx` с примерами
+* [Practical Persistence in Go: SQL Databases](https://www.alexedwards.net/blog/practical-persistence-sql) — Alex Edwards: `database/sql` от подключения до транзакций
+* [Organising Database Access in Go](https://www.alexedwards.net/blog/organising-database-access) — Alex Edwards: паттерны доступа к БД, репозитории
+
+### GORM
+
+* [GORM Guides](https://gorm.io/docs/) — официальная документация: модели, запросы, ассоциации, миграции
+* [GORM: The Good, The Bad, and The Ugly](https://dev.to/nadirbasalamah/gorm-the-good-the-bad-and-the-ugly-4p8o) — Nadir Basalamah: взвешенный разбор плюсов и минусов
+
+### Миграции
+
+* [golang-migrate](https://github.com/golang-migrate/migrate) — репозиторий с документацией: CLI, API, `embed`
+* [Database Migrations in Go](https://medium.com/@cpk2468/database-migrations-in-golang-79bbf2e0c4a1) — пошаговый туториал по `golang-migrate`
+
+### Безопасность
+
+* [OWASP SQL Injection](https://owasp.org/www-community/attacks/SQL_Injection) — полный разбор SQL-инъекций от OWASP
+* [OWASP: Query Parameterization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Query_Parameterization_Cheat_Sheet.html) — параметризованные запросы для всех языков и БД
+
+### Производительность
+
+* [Use The Index, Luke!](https://use-the-index-luke.com/) — Markus Winand: всё об индексах, планах запросов и оптимизации SQL
+* [PostgreSQL: EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html) — официальная документация по `EXPLAIN ANALYZE`
+* [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html) — мониторинг запросов в PostgreSQL
+
+### Тестирование
+
+* [testcontainers-go](https://golang.testcontainers.org/) — официальная документация: PostgreSQL, MySQL, Redis в тестах
+* [Testing Databases in Go](https://dev.to/kevin_van_der_wijst/testing-databases-in-go-4kbf) — Kevin van der Wijst: транзакционные тесты, testcontainers
+
+### SQLite в Go
+
+* [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) — драйвер SQLite на чистом Go, без CGO
+* [Using SQLite in Go](https://earthly.dev/blog/golang-sqlite/) — туториал: подключение, запросы, `:memory:`, тесты
+
+***
 
