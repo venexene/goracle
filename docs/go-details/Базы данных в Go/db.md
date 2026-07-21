@@ -546,61 +546,571 @@ db.SetMaxIdleConns(5)
 
 ## 6. Пакет `database/sql`: подключение и пул
 
-<!-- sql.Open, sql.DB, SetMaxOpenConns, SetMaxIdleConns, SetConnMaxLifetime, Ping. -->
+`sql.DB` — это не одно TCP-соединение, а пул. Он открывает, переиспользует и закрывает соединения автоматически. Ваша задача — правильно его настроить.
+
+***
+
+### Подключение: `sql.Open`
 
 ```go
-// Пример подключения и настройки пула
+import (
+    "database/sql"
+    _ "github.com/jackc/pgx/v5/stdlib"
+)
+
+db, err := sql.Open("pgx", "postgres://user:pass@localhost:5432/mydb?sslmode=disable")
+if err != nil {
+    log.Fatal(err)
+}
+defer db.Close()
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Что происходит при `sql.Open`:
+1. Ищет драйвер `"pgx"` в глобальном реестре (зарегистрирован через `init()`).
+2. Создаёт `*sql.DB` — пул с нулевым количеством активных соединений.
+3. **Не открывает TCP-соединение.** Только проверяет, что connection string не пустая.
+
+Первое соединение откроется лениво — при первом `db.Query()`, `db.Exec()` или `db.Ping()`.
+
+Проверка доступности сразу:
+
+```go
+if err := db.Ping(); err != nil {
+    log.Fatalf("БД недоступна: %v", err)
+}
+```
+
+> Всегда вызывайте `Ping` при старте приложения: неработающая БД обнаружится сразу, а не при первом запросе пользователя.
+
+### Настройки пула
+
+```go
+db.SetMaxOpenConns(25)              // максимум открытых соединений
+db.SetMaxIdleConns(10)              // максимум простаивающих (idle) соединений
+db.SetConnMaxLifetime(5 * time.Minute)  // максимальное время жизни соединения
+db.SetConnMaxIdleTime(1 * time.Minute)  // максимум простоя, после — закрыть
+```
+
+**SetMaxOpenConns** — верхняя граница. Когда все 25 заняты, следующий запрос ЖДЁТ. По умолчанию `0` = без ограничений — под нагрузкой можно открыть тысячи соединений и убить БД.
+
+> Всегда выставляйте `SetMaxOpenConns`. Нет причин оставлять 0 в production.
+
+**SetMaxIdleConns** — сколько соединений держать открытыми в простое. Когда `idle > MaxIdleConns`, лишние закрываются. По умолчанию `2`. Увеличьте, если приложение часто ходит в БД — переиспользование idle-соединения быстрее, чем открытие нового.
+
+**SetConnMaxLifetime** — максимальный возраст соединения от момента открытия. После этого соединение закрывается и заменяется новым. Нужно для:
+- Ротации подключений перед restart БД
+- Обхода проблем с долгоживущими TCP-соединениями (балансировщики, NAT)
+
+**SetConnMaxIdleTime** — максимальное время простоя. Соединение, не использовавшееся дольше этого времени, закрывается.
+
+Рекомендации для среднего веб-сервиса (PostgreSQL):
+
+| Параметр | Значение | Почему |
+|---|---|---|
+| `MaxOpenConns` | 20–50 | PostgreSQL эффективен с небольшим числом соединений |
+| `MaxIdleConns` | 10–25 | Половина или меньше от MaxOpenConns |
+| `ConnMaxLifetime` | 30–60m | Меньше таймаута балансировщика |
+| `ConnMaxIdleTime` | 5–10m | Чтобы не копить idle-соединения |
+
+### Мониторинг: `db.Stats()`
+
+```go
+stats := db.Stats()
+fmt.Printf("Open: %d, Idle: %d, InUse: %d, WaitCount: %d\n",
+    stats.OpenConnections, stats.Idle, stats.InUse, stats.WaitCount)
+```
+
+| Поле | Что значит |
+|---|---|
+| `OpenConnections` | Открыто сейчас |
+| `Idle` | Простаивают |
+| `InUse` | Заняты запросами |
+| `WaitCount` | Сколько запросов ждали освобождения соединения |
+| `WaitDuration` | Суммарное время ожидания |
+| `MaxOpenConnections` | Лимит (из `SetMaxOpenConns`) |
+
+Если `WaitCount` растёт — пул перегружен, увеличьте `MaxOpenConns` или оптимизируйте запросы.
+
+### Жизненный цикл соединения в пуле
+
+```
+sql.Open() → пул пуст
+               ↓
+db.Query()  → открыть TCP-соединение → выполнить запрос → вернуть в idle
+               ↓
+след. Query → взять из idle (если есть) → выполнить запрос → вернуть в idle
+               ↓
+idle > MaxIdleConns → закрыть лишние
+               ↓
+возраст > ConnMaxLifetime → закрыть → следующий запрос откроет новое
+```
+
+### `db.Close()` и утечки
+
+```go
+defer db.Close()
+```
+
+`Close` закрывает ВСЕ соединения в пуле. Без него при завершении программы соединения повиснут до таймаута сервера БД.
+
+> `*sql.DB` создаётся ОДИН раз на всё приложение. Не открывайте новый пул на каждый запрос — это создаёт новый пул соединений, который никогда не закроется.
+
+> **Зачем это Go-разработчику.** `SetMaxOpenConns` без значения (0) — самая популярная причина падения БД под нагрузкой. `WaitCount` в `Stats()` — ваш главный индикатор: если растёт, пулу не хватает соединений. `Ping()` при старте спасает от дебага в 3 часа ночи. И никогда не создавайте `*sql.DB` в обработчике HTTP — это утечка соединений.
 
 ***
 
 ## 7. Запросы: `Query`, `QueryRow`, `Exec`
 
-<!-- Одиночные результаты, множественные, Scan, sql.NullString и nullable-типы. -->
+Три метода `*sql.DB` покрывают все SQL-операции: чтение многих строк, чтение одной строки, изменение данных.
+
+***
+
+### `Query` — множество строк
 
 ```go
-// Примеры Query, QueryRow, Exec
+rows, err := db.Query("SELECT id, name, email FROM users WHERE active = $1", true)
+if err != nil {
+    return err
+}
+defer rows.Close() // всегда закрывать!
+
+for rows.Next() {
+    var id int
+    var name, email string
+    if err := rows.Scan(&id, &name, &email); err != nil {
+        return err
+    }
+    fmt.Printf("%d: %s <%s>\n", id, name, email)
+}
+
+if err := rows.Err(); err != nil { // проверить ошибки итерации
+    return err
+}
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Ключевые моменты:
+- `defer rows.Close()` — освобождает соединение обратно в пул. Без Close соединение утекает навсегда.
+- `rows.Next()` возвращает `false`, когда строки кончились.
+- `rows.Scan()` копирует значения столбцов в переменные по указателям. Порядок столбцов в Scan должен совпадать с порядком в SELECT.
+- `rows.Err()` — после цикла проверяет, не было ли ошибок при итерации (разрыв соединения, неконвертируемый тип).
+
+### `QueryRow` — одна строка
+
+```go
+var name, email string
+err := db.QueryRow("SELECT name, email FROM users WHERE id = $1", 42).Scan(&name, &email)
+if err == sql.ErrNoRows {
+    // строки нет — это нормально, не ошибка
+    return nil
+}
+if err != nil {
+    return err
+}
+```
+
+`QueryRow` возвращает `*sql.Row`. У него нет `Close()` — соединение освобождается автоматически при вызове `Scan`. Если `Scan` не вызван — соединение утекает.
+
+> `sql.ErrNoRows` — не ошибка приложения. Это сигнал «данных нет», и обрабатывать его нужно отдельно от настоящих ошибок.
+
+### `Exec` — изменение данных
+
+```go
+result, err := db.Exec(
+    "INSERT INTO users (name, email) VALUES ($1, $2)",
+    "Alice", "alice@example.com",
+)
+if err != nil {
+    return err
+}
+
+id, _ := result.LastInsertId()     // сгенерированный id (не все драйверы поддерживают)
+n, _ := result.RowsAffected()      // сколько строк затронуто
+```
+
+`Exec` — для INSERT, UPDATE, DELETE и DDL. Возвращает `sql.Result` с двумя полезными методами:
+- `LastInsertId()` — работает с `SERIAL`/`AUTO_INCREMENT`, но **не поддерживается** PostgreSQL через `database/sql`. Для PostgreSQL используйте `RETURNING id` через `QueryRow`.
+- `RowsAffected()` — всегда работает. Полезно проверить, что UPDATE/DELETE действительно что-то затронули.
+
+Для PostgreSQL — возврат id через `RETURNING`:
+
+```go
+var id int
+err := db.QueryRow(
+    "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
+    "Alice", "alice@example.com",
+).Scan(&id)
+```
+
+### Плейсхолдеры: `$1` vs `?`
+
+PostgreSQL использует нумерованные плейсхолдеры `$1, $2, $3`. MySQL и SQLite — вопросительные знаки `?, ?, ?`. Драйвер сам преобразует плейсхолдеры в безопасные значения — **никогда не подставляйте значения через `fmt.Sprintf`** (SQL-инъекции — раздел 13).
+
+### NULL и nullable-типы
+
+Колонка в БД может быть `NULL`. Go-типы вроде `string` и `int` не умеют хранить «отсутствие значения». Решение — nullable-типы из `database/sql`:
+
+```go
+var name sql.NullString
+var age sql.NullInt64
+
+db.QueryRow("SELECT name, age FROM users WHERE id = $1", 1).Scan(&name, &age)
+
+if name.Valid {
+    fmt.Println(name.String) // "Alice"
+} else {
+    fmt.Println("имя не указано")
+}
+```
+
+| Тип | Поле значения |
+|---|---|
+| `sql.NullString` | `.String` |
+| `sql.NullInt64` | `.Int64` |
+| `sql.NullInt32` | `.Int32` |
+| `sql.NullFloat64` | `.Float64` |
+| `sql.NullBool` | `.Bool` |
+| `sql.NullTime` | `.Time` |
+
+Каждый имеет поле `Valid bool`. Если `Valid == false` — значение в БД было `NULL`.
+
+Альтернатива — использовать указатели: `var name *string`. `Scan` запишет `nil`, если значение `NULL`. Но указатели размазывают nil-проверки по всему коду — nullable-типы понятнее.
+
+### Сканирование в структуру
+
+Вручную писать `Scan(&u.ID, &u.Name, &u.Email, ...)` для 15 полей — боль. `sqlx` (раздел 11) делает это автоматически, но на `database/sql` можно обойтись ручным маппингом или вспомогательной функцией:
+
+```go
+type User struct {
+    ID    int
+    Name  string
+    Email string
+}
+
+func scanUser(rows *sql.Rows) (*User, error) {
+    var u User
+    return &u, rows.Scan(&u.ID, &u.Name, &u.Email)
+}
+```
+
+> **Зачем это Go-разработчику.** `defer rows.Close()` — мелочь, без которой соединения утекают. `ErrNoRows` — не ошибка, а штатная ситуация. `LastInsertId` не работает в PostgreSQL — используйте `RETURNING`. И никогда не передавайте пользовательский ввод в SQL через `fmt.Sprintf` — только через плейсхолдеры `$1`, `$2`.
+
+***
 
 ***
 
 ## 8. Подготовленные выражения
 
-<!-- Prepare, повторное использование, защита от инъекций — почему нельзя fmt.Sprintf для SQL. -->
+Подготовленное выражение (prepared statement) — SQL-запрос, заранее скомпилированный на сервере БД. Вы отправляете SQL один раз, получаете «ручку» (`*sql.Stmt`) и дёргаете её многократно с разными параметрами.
+
+***
+
+### `Prepare`: как это работает
 
 ```go
-// Пример Prepare
+stmt, err := db.Prepare("SELECT name, email FROM users WHERE id = $1")
+if err != nil {
+    return err
+}
+defer stmt.Close()
+
+// Многократное исполнение — запрос уже разобран и оптимизирован
+rows, _ := stmt.Query(1)   // пользователь 1
+rows, _ = stmt.Query(42)    // пользователь 42
+rows, _ = stmt.Query(100)   // пользователь 100
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Путь запроса без `Prepare`:
+
+```
+SQL-строка → парсинг → план запроса → выполнение → результат
+```
+
+Путь с `Prepare`:
+
+```
+SQL-строка → парсинг → план запроса (сохраняется!)
+         ↓
+параметры → выполнение плана → результат    ← без повторного парсинга
+         ↓
+параметры → выполнение плана → результат    ← ещё раз
+```
+
+БД парсит SQL и строит план запроса ОДИН раз. Дальше только подставляет параметры и выполняет.
+
+### Методы `*sql.Stmt`
+
+```go
+stmt.Query(args...)       // множество строк
+stmt.QueryRow(args...)    // одна строка
+stmt.Exec(args...)        // изменение данных
+```
+
+Те же, что у `*sql.DB`, но SQL уже зафиксирован — передаёте только параметры.
+
+### Когда `Prepare` полезен
+
+- **Массовые вставки** — один `Prepare("INSERT INTO ...")` на тысячи строк. Без него каждая вставка парсится заново.
+- **Повторяющиеся запросы** — `SELECT ... WHERE id = $1` для разных id в цикле.
+- **Защита от инъекций** — параметры всегда передаются отдельно от SQL, их невозможно интерпретировать как часть запроса.
+
+### Защита от SQL-инъекций
+
+Главное правило: **никогда не подставляйте значения в SQL через `fmt.Sprintf`**.
+
+```go
+// УЯЗВИМО — так делать НЕЛЬЗЯ
+userInput := "1; DROP TABLE users;"
+query := fmt.Sprintf("SELECT * FROM users WHERE id = %s", userInput)
+db.Query(query) // выполняет ДВА запроса: SELECT и DROP
+
+// БЕЗОПАСНО — плейсхолдеры
+db.Query("SELECT * FROM users WHERE id = $1", userInput)
+// БД ищет id = '1; DROP TABLE users;' — строку, а не SQL-команду
+```
+
+Подготовленное выражение усиливает защиту: SQL и параметры передаются серверу БД **раздельно**. Сервер уже знает структуру запроса — параметр может быть только значением, не командой.
+
+### Когда `Prepare` НЕ нужен
+
+`Prepare` — это два сетевых round-trip: сначала `PREPARE`, потом `EXECUTE`. Для однократного запроса это медленнее, чем прямой `db.Query()`.
+
+```go
+// Для однократного запроса — проще и быстрее
+db.Query("SELECT * FROM users WHERE id = $1", 42)
+
+// Для многократного — Prepare
+stmt, _ := db.Prepare("SELECT * FROM users WHERE id = $1")
+for _, id := range ids {
+    stmt.Query(id)
+}
+```
+
+### `Prepare` на уровне `database/sql`
+
+`database/sql` может эмулировать `Prepare` на стороне клиента, если драйвер не поддерживает серверные подготовленные выражения. Гарантий нет — но для `pgx` и `go-sql-driver/mysql` это настоящий серверный Prepare.
+
+> **Зачем это Go-разработчику.** `Prepare` — ваш инструмент для пакетных операций. Тысяча вставок через `Prepare` в 5–10 раз быстрее, чем тысяча отдельных `db.Exec`. Никакой `fmt.Sprintf` для SQL — даже если вы «знаете, что вход безопасный». Завтра код поменяется, и безопасный вход станет опасным. Плейсхолдеры всегда.
 
 ***
 
 ## 9. Транзакции в Go
 
-<!-- Begin, Commit, Rollback, defer для отката, связь с разделами 4 и 8. -->
+Теорию ACID разобрали в разделе 4. Здесь — как работать с транзакциями в коде.
+
+***
+
+### `Begin`, `Commit`, `Rollback`
 
 ```go
-// Пример транзакции с defer
+tx, err := db.Begin()
+if err != nil {
+    return err
+}
+
+_, err = tx.Exec("UPDATE accounts SET balance = balance - 100 WHERE user_id = $1", 1)
+if err != nil {
+    tx.Rollback()
+    return err
+}
+
+_, err = tx.Exec("UPDATE accounts SET balance = balance + 100 WHERE user_id = $1", 2)
+if err != nil {
+    tx.Rollback()
+    return err
+}
+
+tx.Commit()
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+`*sql.Tx` имеет те же методы, что и `*sql.DB`: `Query`, `QueryRow`, `Exec`, `Prepare`. Разница — все операции идут в рамках одной транзакции.
+
+### Паттерн с `defer`
+
+Писать `tx.Rollback()` перед каждым `return` — многословно и легко забыть. Стандартный паттерн:
+
+```go
+tx, err := db.Begin()
+if err != nil {
+    return err
+}
+defer tx.Rollback() // откат, если Commit не был вызван
+
+// ... операции с tx ...
+
+return tx.Commit() // Commit отменяет Rollback
+```
+
+Как это работает: `Rollback` после `Commit` — no-op (ничего не делает). Если до `Commit` случилась ошибка — `defer` гарантирует откат.
+
+### Контекст: `BeginTx`
+
+```go
+tx, err := db.BeginTx(ctx, nil) // с контекстом для таймаутов и отмены
+```
+
+Опции через `*sql.TxOptions`:
+
+```go
+tx, err := db.BeginTx(ctx, &sql.TxOptions{
+    Isolation: sql.LevelSerializable, // уровень изоляции
+    ReadOnly:  true,                  // только чтение
+})
+```
+
+### Транзакция и `Prepare`
+
+Подготовленное выражение внутри транзакции привязано к ней:
+
+```go
+tx, _ := db.Begin()
+defer tx.Rollback()
+
+stmt, _ := tx.Prepare("INSERT INTO logs (msg) VALUES ($1)")
+defer stmt.Close()
+
+stmt.Exec("транзакция началась")
+// ... другие операции ...
+stmt.Exec("транзакция завершается")
+
+tx.Commit() // обе вставки либо применятся, либо нет
+```
+
+`stmt` создан из `tx`, а не из `db` — его операции часть транзакции.
+
+### Распространённые ошибки
+
+**Использовать `db` вместо `tx` внутри транзакции:**
+
+```go
+tx, _ := db.Begin()
+defer tx.Rollback()
+
+db.Exec("UPDATE users SET name = $1 WHERE id = $2", "Alice", 1) // ОШИБКА: не в транзакции!
+tx.Exec("UPDATE users SET name = $1 WHERE id = $2", "Bob", 2)
+
+tx.Commit() // Bob обновился, Alice — мимо транзакции
+```
+
+Запрос через `db` выполняется в отдельном соединении, вне транзакции.
+
+**Забыть `Commit`:**
+
+```go
+tx, _ := db.Begin()
+defer tx.Rollback()
+
+tx.Exec("INSERT INTO users (name) VALUES ($1)", "Alice")
+// return без Commit → defer делает Rollback → Алиса не сохранилась
+```
+
+**Долгая транзакция** — блокировки держатся до `Commit`/`Rollback`. Не делайте HTTP-запросы или вызовы внешних API внутри транзакции.
+
+> **Зачем это Go-разработчику.** `defer tx.Rollback()` — идиома, с которой начинается любая транзакция в Go. Не забывайте её — потеря данных стоит дороже двух строк кода. Транзакция через `db.BeginTx(ctx, ...)` позволяет отменить долгий запрос по таймауту контекста. И главное: внутри транзакции используйте `tx`, а не `db`.
 
 ***
 
 ## 10. Миграции
 
-<!-- golang-migrate, up/down, версионирование, embed. -->
+Миграции — способ версионировать схему базы данных. Вместо «в prod выкатились, а колонку забыли добавить» — SQL-файлы с изменениями, которые применяются последовательно.
 
-```go
-// Пример миграции
+Стандартный инструмент для Go — [`golang-migrate`](https://github.com/golang-migrate/migrate). Поддерживает PostgreSQL, MySQL, SQLite и десятки других БД.
+
+***
+
+### Как это работает
+
+Каждая миграция — пара файлов: `up` (применить) и `down` (откатить):
+
+```
+migrations/
+    000001_create_users.up.sql
+    000001_create_users.down.sql
+    000002_add_email_column.up.sql
+    000002_add_email_column.down.sql
 ```
 
-> **Зачем это Go-разработчику.** <!-- -->
+Номер версии — порядковый. `golang-migrate` хранит в БД таблицу `schema_migrations` с текущей версией и признаком dirty (незавершённая миграция).
+
+```sql
+-- 000001_create_users.up.sql
+CREATE TABLE users (
+    id   SERIAL PRIMARY KEY,
+    name TEXT NOT NULL
+);
+
+-- 000001_create_users.down.sql
+DROP TABLE users;
+```
+
+### CLI: создание и применение
+
+```bash
+# Создать новую пару миграций
+migrate create -ext sql -dir migrations -seq create_users
+
+# Применить все неприменённые
+migrate -path migrations -database "postgres://user:pass@localhost:5432/mydb?sslmode=disable" up
+
+# Откатить последнюю
+migrate -path migrations -database "..." down 1
+
+# Принудительно выставить версию (если миграция сломалась)
+migrate -path migrations -database "..." force 5
+```
+
+### Программный API в Go
+
+Миграции можно встроить прямо в код приложения — удобно для запуска при старте:
+
+```go
+import (
+    "embed"
+    "github.com/golang-migrate/migrate/v4"
+    _ "github.com/golang-migrate/migrate/v4/database/postgres"
+    "github.com/golang-migrate/migrate/v4/source/iofs"
+)
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+func runMigrations(dbURL string) error {
+    source, err := iofs.New(migrationsFS, "migrations")
+    if err != nil {
+        return err
+    }
+
+    m, err := migrate.NewWithSourceInstance("iofs", source, dbURL)
+    if err != nil {
+        return err
+    }
+    defer m.Close()
+
+    if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+        return err
+    }
+    return nil
+}
+```
+
+Директива `//go:embed migrations/*.sql` вкомпилирует SQL-файлы прямо в бинарник. Не надо таскать папку `migrations/` рядом с исполняемым файлом — один бинарник содержит всё.
+
+### Правила хороших миграций
+
+1. **Одна миграция — одно изменение.** Не мешайте создание таблицы и добавление колонки в другой таблице в одном файле.
+2. **Пишите `down` всегда.** Даже если «мы никогда не откатываемся». Откат случится в самый неподходящий момент.
+3. **Идемпотентность.** `up` должен падать, если изменения уже есть (или проверять `IF NOT EXISTS`). `down` — аналогично с `IF EXISTS`.
+4. **`NOT NULL` с `DEFAULT`.** Добавление `NOT NULL` колонки без значения по умолчанию сломает существующие строки.
+5. **Делайте миграции обратимыми.** `down` не обязан восстанавливать данные, но обязан восстанавливать схему.
+
+### Dirty-состояние
+
+Если `up`-миграция упала посреди выполнения, БД помечается как **dirty**. Повторный `up` невозможен — сначала нужно `force` до предыдущей версии и вручную откатить частично применённые изменения.
+
+> Всегда тестируйте `up` и `down` локально перед применением в production.
+
+> **Зачем это Go-разработчику.** Миграции — не роскошь, а необходимость. Без них схема БД живёт в головах разработчиков, и «я забыл выполнить SQL перед деплоем» становится нормой. `embed` + `iofs` — стандартный способ вкомпилировать миграции в бинарник на Go 1.16+. И всегда пишите `down`: откат без down-миграции — это ручная починка схемы в 4 утра.
+
+***
 
 ***
 
