@@ -102,6 +102,7 @@ nav:
       - Синхронизация: go-details/Синхронизация в Go/synchronization.md
       - Дженерики: go-details/Дженерики в Go/generics.md
       - Тестирование: go-details/Тестирование в Go/testing.md
+      - Базы данных в Go: go-details/Базы данных в Go/db.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
       - Планировщик Go: go-fundamentals/Планировщик Go/scheduler.md

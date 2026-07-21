@@ -86,6 +86,7 @@
 | [Синхронизация](go-details/Синхронизация в Go/synchronization.md) | Mutex, RWMutex, WaitGroup, atomic, Cond, Pool, Map, каналы как примитивы |
 | [Дженерики](go-details/Дженерики в Go/generics.md) | Ти́повые параметры, constraints, вывод типов, интерфейсы как типы |
 | [Тестирование](go-details/Тестирование в Go/testing.md) | `go test`, табличные тесты, бенчмарки, фаззинг, мокирование |
+| [Базы данных в Go](go-details/Базы данных в Go/db.md) | SQL-основы, ACID, `database/sql`, `sqlx`, `pgx`, миграции, ORM |
 
 ### :material-memory: Устройство Go
 
