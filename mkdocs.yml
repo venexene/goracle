@@ -101,9 +101,11 @@ nav:
       - Контекст: go-details/Контекст в Go/context.md
       - Синхронизация: go-details/Синхронизация в Go/synchronization.md
       - Дженерики: go-details/Дженерики в Go/generics.md
-      - Тестирование: go-details/Тестирование в Go/testing.md
-      - Базы данных в Go: go-details/Базы данных в Go/db.md
-      - Логирование: go-details/Логирование в Go/logging.md
+  - Инструменты и практика:
+      - Обзор: tools-and-practice/index.md
+      - Тестирование: tools-and-practice/Тестирование в Go/testing.md
+      - Базы данных в Go: tools-and-practice/Базы данных в Go/db.md
+      - Логирование: tools-and-practice/Логирование в Go/logging.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
       - Планировщик Go: go-fundamentals/Планировщик Go/scheduler.md

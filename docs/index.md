@@ -42,6 +42,14 @@
 
     [:material-arrow-right: Устройство Go](go-fundamentals/index.md)
 
+- :material-tools:{ .lg .middle } **Инструменты и практика**
+
+    ---
+
+    Тестирование, базы данных, логирование — инструменты и практики, без которых не обходится ни один production-проект.
+
+    [:material-arrow-right: Инструменты и практика](tools-and-practice/index.md)
+
 </div>
 
 ---
@@ -85,9 +93,14 @@
 | [Контекст](go-details/Контекст в Go/context.md) | Background, WithCancel/Timeout, Value, внутреннее устройство |
 | [Синхронизация](go-details/Синхронизация в Go/synchronization.md) | Mutex, RWMutex, WaitGroup, atomic, Cond, Pool, Map, каналы как примитивы |
 | [Дженерики](go-details/Дженерики в Go/generics.md) | Ти́повые параметры, constraints, вывод типов, интерфейсы как типы |
-| [Тестирование](go-details/Тестирование в Go/testing.md) | `go test`, табличные тесты, бенчмарки, фаззинг, мокирование |
-| [Базы данных в Go](go-details/Базы данных в Go/db.md) | SQL-основы, ACID, `database/sql`, `sqlx`, `pgx`, миграции, ORM |
-| [Логирование](go-details/Логирование в Go/logging.md) | `log/slog`, уровни, атрибуты, handlers, контекстное логирование |
+
+### :material-tools: Инструменты и практика
+
+| Тема | О чём |
+|---|---|
+| [Тестирование](tools-and-practice/Тестирование%20в%20Go/testing.md) | `go test`, табличные тесты, бенчмарки, фаззинг, мокирование |
+| [Базы данных в Go](tools-and-practice/Базы%20данных%20в%20Go/db.md) | SQL-основы, ACID, `database/sql`, `sqlx`, `pgx`, миграции, ORM |
+| [Логирование](tools-and-practice/Логирование%20в%20Go/logging.md) | `log/slog`, уровни, атрибуты, handlers, контекстное логирование |
 
 ### :material-memory: Устройство Go
 
