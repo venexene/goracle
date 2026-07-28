@@ -32,58 +32,58 @@ A Russian-language knowledge base on Go - from runtime internals to architectura
 
 | Topic | Description |
 |-------|-------------|
-| [Algorithms & Data Structures](<computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md>) | Big O, arrays, linked lists, trees, hash tables, greedy algorithms, DP |
-| [Parallelism & Concurrency](<computer-science/Параллельность и конкрентность/concurrency.md>) | Goroutines, channels, synchronization primitives, data races, memory model |
-| [Concurrency Patterns](<computer-science/Конкурентные паттерны в Go/concurrency-patterns.md>) | Worker Pool, Fan-in, Fan-out, Pipeline, Cancellation |
-| [Computer Networks](<computer-science/Компьютерные сети/computer-networks.md>) | OSI, TCP/IP, HTTP, gRPC - networking fundamentals |
-| [Computer Systems](<computer-science/Компьютерные системы/computer-systems.md>) | CPU, memory, operating systems, interrupts |
+| [Algorithms & Data Structures](<docs/computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md>) | Big O, arrays, linked lists, trees, hash tables, greedy algorithms, DP |
+| [Parallelism & Concurrency](<docs/computer-science/Параллельность и конкрентность/concurrency.md>) | Goroutines, channels, synchronization primitives, data races, memory model |
+| [Concurrency Patterns](<docs/computer-science/Конкурентные паттерны в Go/concurrency-patterns.md>) | Worker Pool, Fan-in, Fan-out, Pipeline, Cancellation |
+| [Computer Networks](<docs/computer-science/Компьютерные сети/computer-networks.md>) | OSI, TCP/IP, HTTP, gRPC - networking fundamentals |
+| [Computer Systems](<docs/computer-science/Компьютерные системы/computer-systems.md>) | CPU, memory, operating systems, interrupts |
 
 ### Architecture & Design
 
 | Topic | Description |
 |-------|-------------|
-| [Programming Principles](<architecture/Принципы программирования/programming-principles.md>) | SOLID in Go, KISS, DRY, YAGNI |
-| [OOP in Go](architecture/ООП/oop.md) | Structs, interfaces, embedding, polymorphism without inheritance |
-| [Clean Architecture](<architecture/Чистая архитектура/clean-architecture.md>) | Layers, dependencies, repositories, dependency injection in Go |
-| [Microservice Architecture](<architecture/Микросервисная архитектура/microservices.md>) | Decomposition, communication, database per service, Conway's Law |
-| [HTTP](architecture/HTTP/http.md) | HTTP/1.1–HTTP/3 and `net/http`: server, client, routing, concurrency |
-| [gRPC](architecture/gRPC/index.md) | Protobuf, HTTP/2, servers, clients, streaming, interceptors |
+| [Programming Principles](<docs/architecture/Принципы программирования/programming-principles.md>) | SOLID in Go, KISS, DRY, YAGNI |
+| [OOP in Go](docs/architecture/ООП/oop.md) | Structs, interfaces, embedding, polymorphism without inheritance |
+| [Clean Architecture](<docs/architecture/Чистая архитектура/clean-architecture.md>) | Layers, dependencies, repositories, dependency injection in Go |
+| [Microservice Architecture](<docs/architecture/Микросервисная архитектура/microservices.md>) | Decomposition, communication, database per service, Conway's Law |
+| [HTTP](docs/architecture/HTTP/http.md) | HTTP/1.1–HTTP/3 and `net/http`: server, client, routing, concurrency |
+| [gRPC](docs/architecture/gRPC/index.md) | Protobuf, HTTP/2, servers, clients, streaming, interceptors |
 
 ### Language Details
 
 | Topic | Description |
 |-------|-------------|
-| [Data Types](<go-details/Типы данных в Go/types.md>) | Static typing, basic and composite types, zero values |
-| [Arrays & Slices](<go-details/Массивы и срезы в Go/arrays-and-slices.md>) | Stack arrays, slice-header, append, escape analysis, memory leaks |
-| [Maps](<go-details/Мапы в Go/maps.md>) | hmap and buckets, evacuation, Swiss Table (Go 1.24+), thread safety |
-| [Strings](<go-details/Строки в Go/strings.md>) | String structure, UTF-8, immutability, rune iteration |
-| [Interfaces](<go-details/Интерфейсы в Go/interfaces.md>) | Implicit implementation, type assertion/switch, iface/eface, nil traps |
-| [Channels](<go-details/Каналы в Go/channels.md>) | Buffered and unbuffered, select, hchan internals, blocking/unblocking |
-| [Defer](<go-details/Defer в Go/defer.md>) | Deferred execution, LIFO, arguments vs closures, panic/recover |
-| [Closures](<go-details/Замыкания в Go/closures.md>) | Variable capture, function factories, state in closures |
-| [Errors](<go-details/Ошибки в Go/errors.md>) | The `error` interface, wrapping, `errors.Is`/`As`, custom errors |
-| [Context](<go-details/Контекст в Go/context.md>) | Background, WithCancel/Timeout, Value, internals |
-| [Synchronization](<go-details/Синхронизация в Go/synchronization.md>) | Mutex, RWMutex, WaitGroup, atomic, Cond, Pool, Map |
-| [Generics](<go-details/Дженерики в Go/generics.md>) | Type parameters, constraints, type inference |
+| [Data Types](<docs/go-details/Типы данных в Go/types.md>) | Static typing, basic and composite types, zero values |
+| [Arrays & Slices](<docs/go-details/Массивы и срезы в Go/arrays-and-slices.md>) | Stack arrays, slice-header, append, escape analysis, memory leaks |
+| [Maps](<docs/go-details/Мапы в Go/maps.md>) | hmap and buckets, evacuation, Swiss Table (Go 1.24+), thread safety |
+| [Strings](<docs/go-details/Строки в Go/strings.md>) | String structure, UTF-8, immutability, rune iteration |
+| [Interfaces](<docs/go-details/Интерфейсы в Go/interfaces.md>) | Implicit implementation, type assertion/switch, iface/eface, nil traps |
+| [Channels](<docs/go-details/Каналы в Go/channels.md>) | Buffered and unbuffered, select, hchan internals, blocking/unblocking |
+| [Defer](<docs/go-details/Defer в Go/defer.md>) | Deferred execution, LIFO, arguments vs closures, panic/recover |
+| [Closures](<docs/go-details/Замыкания в Go/closures.md>) | Variable capture, function factories, state in closures |
+| [Errors](<docs/go-details/Ошибки в Go/errors.md>) | The `error` interface, wrapping, `errors.Is`/`As`, custom errors |
+| [Context](<docs/go-details/Контекст в Go/context.md>) | Background, WithCancel/Timeout, Value, internals |
+| [Synchronization](<docs/go-details/Синхронизация в Go/synchronization.md>) | Mutex, RWMutex, WaitGroup, atomic, Cond, Pool, Map |
+| [Generics](<docs/go-details/Дженерики в Go/generics.md>) | Type parameters, constraints, type inference |
 
 ### Tools & Practice
 
 | Topic | Description |
 |-------|-------------|
-| [Testing](<tools-and-practice/Тестирование в Go/testing.md>) | `go test`, table-driven tests, benchmarks, fuzzing, mocking, `httptest` |
-| [Databases in Go](<tools-and-practice/Базы данных в Go/db.md>) | SQL basics, ACID, `database/sql`, `sqlx`, `pgx`, migrations, ORM, `sqlc` |
-| [Logging](<tools-and-practice/Логирование в Go/logging.md>) | `log/slog`, levels, attributes, handlers, contextual logging, OpenTelemetry |
+| [Testing](<docs/tools-and-practice/Тестирование в Go/testing.md>) | `go test`, table-driven tests, benchmarks, fuzzing, mocking, `httptest` |
+| [Databases in Go](<docs/tools-and-practice/Базы данных в Go/db.md>) | SQL basics, ACID, `database/sql`, `sqlx`, `pgx`, migrations, ORM, `sqlc` |
+| [Logging](<docs/tools-and-practice/Логирование в Go/logging.md>) | `log/slog`, levels, attributes, handlers, contextual logging, OpenTelemetry |
 
 ### Go Internals
 
 | Topic | Description |
 |-------|-------------|
-| [Go Scheduler](<go-fundamentals/Планировщик Go/scheduler.md>) | OS scheduling to GMP model: goroutines, machines, processors, work-stealing |
-| [Memory in Go](<go-fundamentals/Память в Go/memory.md>) | Virtual memory, paging, stack and heap, Go allocator |
-| [Escape Analysis](<go-fundamentals/Escape Analysis в Go/escape-analysis.md>) | How the compiler decides stack vs heap allocation |
-| [Garbage Collector](<go-fundamentals/Сбощик мусора в Go/garbage-collector.md>) | Tricolor marking, write barriers, GC phases, GOGC, tracing |
-| [Inlining](<go-fundamentals/Инлайн в Go/inlining.md>) | Function inlining by the compiler, conditions, impact on stack traces |
-| [Alignment](<go-fundamentals/Выравнивание в Go/alignment.md>) | Struct field alignment, padding, field order optimization |
+| [Go Scheduler](<docs/go-fundamentals/Планировщик Go/scheduler.md>) | OS scheduling to GMP model: goroutines, machines, processors, work-stealing |
+| [Memory in Go](<docs/go-fundamentals/Память в Go/memory.md>) | Virtual memory, paging, stack and heap, Go allocator |
+| [Escape Analysis](<docs/go-fundamentals/Escape Analysis в Go/escape-analysis.md>) | How the compiler decides stack vs heap allocation |
+| [Garbage Collector](<docs/go-fundamentals/Сбощик мусора в Go/garbage-collector.md>) | Tricolor marking, write barriers, GC phases, GOGC, tracing |
+| [Inlining](<docs/go-fundamentals/Инлайн в Go/inlining.md>) | Function inlining by the compiler, conditions, impact on stack traces |
+| [Alignment](<docs/go-fundamentals/Выравнивание в Go/alignment.md>) | Struct field alignment, padding, field order optimization |
 
 ---
 
