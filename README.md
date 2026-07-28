@@ -8,7 +8,7 @@
 
 A Russian-language knowledge base on Go - from runtime internals to architectural patterns. **30+ topics** across 5 sections, with diagrams, code snippets, and search. Deepseek V4 Pro was used for text editing.
 
-🌐 **[venexene.github.io/goracle](https://venexene.github.io/goracle)**
+**[venexene.github.io/goracle](https://venexene.github.io/goracle)**
 
 ---
 
