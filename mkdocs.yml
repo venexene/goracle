@@ -31,10 +31,6 @@ theme:
     - search.highlight
     - content.code.copy
     - content.code.annotate
-    - search.suggest
-    - search.highlight
-    - content.code.copy
-    - content.code.annotate
 
 markdown_extensions:
   - pymdownx.highlight:
