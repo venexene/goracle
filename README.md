@@ -20,12 +20,16 @@
 | Раздел | Содержание |
 |---|---|
 | [Основы информатики](docs/computer-science/index.md) | Алгоритмы, конкурентность, сети и компьютерные системы |
-| [Архитектура и дизайн](docs/architecture/index.md) | Принципы проектирования, ООП в Go, чистая и микросервисная архитектура, HTTP и gRPC |
+| [Архитектура и проектирование](docs/architecture/index.md) | Принципы проектирования, ООП в Go, чистая и микросервисная архитектура, HTTP и gRPC |
 | [Детали языка](docs/go-details/index.md) | Типы, коллекции, интерфейсы, каналы, ошибки, контекст, синхронизация и обобщённый код |
 | [Устройство Go](docs/go-fundamentals/index.md) | Планировщик, память, анализ времени жизни, сборщик мусора, оптимизации и выравнивание |
 | [Инструменты и практика](docs/tools-and-practice/index.md) | Тестирование, базы данных и журналирование |
 
 Полная карта тем и маршруты чтения находятся на [главной странице](docs/index.md).
+
+Для последовательного обучения подготовлены [маршруты](docs/learning-paths.md),
+[практикум](docs/practice.md) и [словарь](docs/glossary.md). Правила дополнения
+проекта находятся в [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Структура проекта
 
@@ -68,6 +72,7 @@ mkdocs build --strict
 ```bash
 python scripts/check_docs.py
 python scripts/check_language.py
+python scripts/check_coverage.py
 cd examples
 go test ./...
 go vet ./...

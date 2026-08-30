@@ -9,12 +9,15 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import unquote
 
+from markdown.extensions.toc import slugify_unicode
+
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 
 LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 NAV = re.compile(r"^\s*-\s+[^:]+:\s+([^#'\"{}][^#]*)$")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+EXPLICIT_ID = re.compile(r"\bid=[\"']([^\"']+)[\"']")
 
 
 def local_target(source: Path, raw: str) -> Path | None:
@@ -33,6 +36,32 @@ def local_target(source: Path, raw: str) -> Path | None:
     return (source.parent / path).resolve()
 
 
+def fragment(raw: str) -> str:
+    target = raw.strip()
+    if target.startswith("<") and ">" in target:
+        target = target[1:target.index(">")]
+    else:
+        target = re.split(r"\s+['\"]", target, maxsplit=1)[0]
+    return unquote(target.split("#", 1)[1]) if "#" in target else ""
+
+
+def markdown_anchors(path: Path) -> set[str]:
+    anchors: set[str] = set()
+    counts: Counter[str] = Counter()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        anchors.update(EXPLICIT_ID.findall(line))
+        match = HEADING.match(line)
+        if match is None:
+            continue
+        title = re.sub(r"[`*_]", "", match.group(2))
+        title = re.sub(r"\s+\{[^}]*}\s*$", "", title)
+        base = slugify_unicode(title, "-")
+        suffix = counts[base]
+        anchors.add(base if suffix == 0 else f"{base}_{suffix}")
+        counts[base] += 1
+    return anchors
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -45,9 +74,17 @@ def main() -> int:
         if fences % 2:
             errors.append(f"{relative}: непарный блок кода")
 
-        headings = [match.group(2).strip().casefold() for line in text.splitlines()
-                    if (match := HEADING.match(line))]
-        duplicates = [heading for heading, count in Counter(headings).items() if count > 1]
+        parents: list[str] = []
+        heading_paths: list[tuple[str, ...]] = []
+        for line in text.splitlines():
+            if not (match := HEADING.match(line)):
+                continue
+            level = len(match.group(1))
+            title = match.group(2).strip().casefold()
+            parents = parents[:level - 1]
+            heading_paths.append((*parents, title))
+            parents.append(title)
+        duplicates = [path[-1] for path, count in Counter(heading_paths).items() if count > 1]
         if duplicates:
             warnings.append(f"{relative}: повтор заголовка: {', '.join(duplicates)}")
 
@@ -55,6 +92,10 @@ def main() -> int:
             target = local_target(path, match.group(1))
             if target is not None and not target.exists():
                 errors.append(f"{relative}: нет локальной цели {match.group(1)!r}")
+            elif (anchor := fragment(match.group(1))) and target is not None \
+                    and target.suffix.casefold() == ".md" \
+                    and anchor not in markdown_anchors(target):
+                errors.append(f"{relative}: нет якоря #{anchor} в {target.relative_to(ROOT)}")
 
     config = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
     nav_files: set[Path] = set()

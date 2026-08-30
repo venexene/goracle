@@ -95,6 +95,14 @@ func Counters(n int) []func() int {
 	return result
 }
 
+func Accumulator() func(int) int {
+	var total int
+	return func(delta int) int {
+		total += delta
+		return total
+	}
+}
+
 func CloseAll(closers ...io.Closer) (err error) {
 	for i := len(closers) - 1; i >= 0; i-- {
 		err = errors.Join(err, closers[i].Close())

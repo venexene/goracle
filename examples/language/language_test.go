@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"testing"
 )
 
@@ -70,16 +71,36 @@ func TestCancelCause(t *testing.T) {
 	}
 }
 
-func TestStringsMapsAndClosures(t *testing.T) {
+func TestReverseRunes(t *testing.T) {
 	if got := ReverseRunes("Go🙂"); got != "🙂oG" {
 		t.Fatalf("reverse = %q", got)
 	}
+}
+
+func TestEvenValues(t *testing.T) {
 	if got := EvenValues(map[string]int{"odd": 1, "even": 2}); len(got) != 1 || got["even"] != 2 {
 		t.Fatalf("values = %v", got)
 	}
+}
+
+func TestLoopClosures(t *testing.T) {
 	counters := Counters(3)
 	if counters[0]() != 0 || counters[2]() != 2 {
 		t.Fatal("loop values were captured incorrectly")
+	}
+}
+
+func TestStringBytesAndRunes(t *testing.T) {
+	text := "Go🙂"
+	if len(text) != 6 || len([]rune(text)) != 3 {
+		t.Fatalf("bytes=%d runes=%d", len(text), len([]rune(text)))
+	}
+}
+
+func TestAccumulatorClosure(t *testing.T) {
+	left, right := Accumulator(), Accumulator()
+	if left(2) != 2 || left(3) != 5 || right(4) != 4 {
+		t.Fatal("closures must keep independent state")
 	}
 }
 
@@ -91,5 +112,71 @@ func TestCloseAllAndTypedNil(t *testing.T) {
 	var concrete *typedError
 	if IsNilError(concrete) {
 		t.Fatal("an interface containing a typed nil is not nil")
+	}
+}
+
+func TestArrayCopyAndSliceSharing(t *testing.T) {
+	array := [3]int{1, 2, 3}
+	copyOfArray := array
+	copyOfArray[0] = 9
+	if array[0] != 1 {
+		t.Fatal("array assignment must copy values")
+	}
+	slice := array[:]
+	slice[0] = 7
+	if array[0] != 7 {
+		t.Fatal("slice must refer to its backing array")
+	}
+}
+
+func TestMapLookupDistinguishesMissingKey(t *testing.T) {
+	values := map[string]int{"zero": 0}
+	if value, ok := values["zero"]; !ok || value != 0 {
+		t.Fatalf("existing zero: value=%d ok=%v", value, ok)
+	}
+	if value, ok := values["missing"]; ok || value != 0 {
+		t.Fatalf("missing: value=%d ok=%v", value, ok)
+	}
+}
+
+func TestDeferUsesLIFOOrder(t *testing.T) {
+	var order []int
+	func() {
+		defer func() { order = append(order, 1) }()
+		defer func() { order = append(order, 2) }()
+		defer func() { order = append(order, 3) }()
+	}()
+	if !slices.Equal(order, []int{3, 2, 1}) {
+		t.Fatalf("order = %v", order)
+	}
+}
+
+func TestJoinedErrorsKeepBothCauses(t *testing.T) {
+	left := errors.New("left")
+	right := errors.New("right")
+	err := errors.Join(left, right)
+	if !errors.Is(err, left) || !errors.Is(err, right) {
+		t.Fatalf("joined error = %v", err)
+	}
+}
+
+func TestClosedChannelReturnsZeroAndFalse(t *testing.T) {
+	values := make(chan int, 1)
+	values <- 7
+	close(values)
+	if value, ok := <-values; !ok || value != 7 {
+		t.Fatalf("buffered value=%d ok=%v", value, ok)
+	}
+	if value, ok := <-values; ok || value != 0 {
+		t.Fatalf("closed channel value=%d ok=%v", value, ok)
+	}
+}
+
+func TestGenericClonePreservesNamedSlice(t *testing.T) {
+	type numbers []int
+	source := numbers{1, 2, 3}
+	clone := Clone(source)
+	if !slices.Equal(clone, source) {
+		t.Fatalf("clone = %v", clone)
 	}
 }

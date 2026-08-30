@@ -1,12 +1,42 @@
 package runtimeinfo
 
-import "unsafe"
+import (
+	"runtime"
+	"runtime/metrics"
+	"unsafe"
+)
 
 type Value struct {
 	Enabled bool
 	Count   int64
 	Code    uint16
 }
+
+type SchedulerSnapshot struct {
+	LogicalCPUs int
+	GOMAXPROCS  int
+	Goroutines  int
+}
+
+func ReadScheduler() SchedulerSnapshot {
+	return SchedulerSnapshot{
+		LogicalCPUs: runtime.NumCPU(),
+		GOMAXPROCS:  runtime.GOMAXPROCS(0),
+		Goroutines:  runtime.NumGoroutine(),
+	}
+}
+
+func HeapGoal() uint64 {
+	samples := []metrics.Sample{{Name: "/gc/heap/goal:bytes"}}
+	metrics.Read(samples)
+	return samples[0].Value.Uint64()
+}
+
+func Sum(value Value) int64 { return int64(value.Code) + value.Count }
+
+type Summer interface{ Sum() int64 }
+
+func (value Value) Sum() int64 { return Sum(value) }
 
 type Layout struct {
 	Size, Alignment uintptr

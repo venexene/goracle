@@ -11,3 +11,30 @@ func TestOffsetsFitInsideValue(t *testing.T) {
 		t.Fatalf("offsets do not fit: %+v", layout)
 	}
 }
+
+func TestSchedulerSnapshot(t *testing.T) {
+	snapshot := ReadScheduler()
+	if snapshot.LogicalCPUs < 1 || snapshot.GOMAXPROCS < 1 || snapshot.Goroutines < 1 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestHeapGoalMetric(t *testing.T) {
+	if goal := HeapGoal(); goal == 0 {
+		t.Fatal("heap goal must be positive")
+	}
+}
+
+func BenchmarkValueCall(b *testing.B) {
+	value := Value{Count: 40, Code: 2}
+	for b.Loop() {
+		_ = Sum(value)
+	}
+}
+
+func BenchmarkInterfaceCall(b *testing.B) {
+	var value Summer = Value{Count: 40, Code: 2}
+	for b.Loop() {
+		_ = value.Sum()
+	}
+}

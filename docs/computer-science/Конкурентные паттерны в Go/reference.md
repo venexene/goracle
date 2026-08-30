@@ -1378,7 +1378,7 @@ func orDone(channels ...<-chan struct{}) <-chan struct{} {
 
 ### Когда полезен
 
-* **Graceful shutdown.** Приложение получает `SIGTERM`, `SIGINT` и имеет внутренний таймаут — Or-Done объединяет их в один сигнал «пора останавливаться».
+* **Мягкое завершение.** Приложение получает `SIGTERM`, `SIGINT` и имеет внутренний срок — Or-Done объединяет их в один сигнал «пора останавливаться».
 * **Множественные контексты.** Горутина зависит от контекста запроса и контекста соединения — Or-Done объединяет их `Done()`.
 * **Мониторинг нескольких источников.** Ожидание готовности нескольких сервисов: любой упал — реагируем.
 *
@@ -1678,7 +1678,8 @@ go func() {
 
 **Как избежать:** начинать с небуферизированного канала и добавлять буфер только после профилирования и подтверждения необходимости.
 
-> **Зачем это Go-разработчику.** Конкурентные баги — самые дорогие в отладке. Знание типичных ошибок позволяет предотвратить их на этапе написания кода, а не искать под нагрузкой в продакшене.
+Ошибки конкурентного кода трудно воспроизводить. Проверяйте отмену, завершение и
+ограничение ресурсов до нагрузочных испытаний, а тесты запускайте с детектором гонок.
 
 ***
 
@@ -1692,13 +1693,7 @@ go func() {
 
 ### Репозитории с примерами кода
 
-* [github.com/iamuditg/go-concurrency-patterns](https://github.com/iamuditg/go-concurrency-patterns) — реализации всех паттернов с тестами:
-  * [Worker Pool](https://github.com/iamuditg/go-concurrency-patterns/tree/main/worker_pool)
-  * [Fan-in](https://github.com/iamuditg/go-concurrency-patterns/tree/main/fan_in)
-  * [Fan-out](https://github.com/iamuditg/go-concurrency-patterns/tree/main/fan_out)
-  * [Pipeline](https://github.com/iamuditg/go-concurrency-patterns/tree/main/pipeline)
-  * [Cancellation](https://github.com/iamuditg/go-concurrency-patterns/tree/main/cancellation)
-  * [Semaphore](https://github.com/iamuditg/go-concurrency-patterns/tree/main/semaphore)
+* [github.com/iamuditg/go-concurrency-patterns](https://github.com/iamuditg/go-concurrency-patterns) — дополнительная подборка реализаций конкурентных шаблонов с тестами. Для проверяемых примеров самой книги используйте пакет `examples/concurrency`.
 
 ### Пакеты стандартной библиотеки и golang.org/x
 

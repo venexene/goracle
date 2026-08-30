@@ -1281,6 +1281,8 @@ Go предоставляет мощные инструменты для диа�
 
 ***
 
+<a id="scheduler-diagnostics"></a>
+
 ## 11. Диагностика планировщика
 
 Начинайте не с внутренних полей `g` и `p`, а с наблюдаемого симптома:
@@ -1311,14 +1313,7 @@ Go предоставляет мощные инструменты для диа�
 
 ## Ссылки
 
-[Go Scheduler: GMP Model Explained](https://nghiant3223.github.io/2025/04/15/go-scheduler.html)
-
-https://habr.com/ru/articles/891426/
-
-https://habr.com/ru/articles/478168/
-
-https://habr.com/ru/articles/489862/
-
-https://habr.com/ru/companies/mvideo/articles/778248/
-
-https://www.youtube.com/watch?v=kedW1xO3Zbo\&t=2960s
+* [Диагностика программ Go](https://go.dev/doc/diagnostics)
+* [Трассировка выполнения Go](https://go.dev/blog/execution-traces-2024)
+* [Пакет `runtime/trace`](https://pkg.go.dev/runtime/trace)
+* [Пакет `runtime/metrics`](https://pkg.go.dev/runtime/metrics)

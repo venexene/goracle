@@ -1,0 +1,25 @@
+name: Периодическая проверка
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-links:
+    name: Внешние ссылки
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: >-
+            --no-progress --max-retries 2 --timeout 20
+            --accept 200,204,206,429
+            --exclude '^https://venexene\.github\.io/goracle/?$'
+            --root-dir ${{ github.workspace }}
+            './**/*.md'
+          fail: true

@@ -13,9 +13,18 @@ PATTERNS = {
     r"\bmainstream(?:-язык\w*)?\b": "распространённый язык",
     r"\bproduction-ready\b": "готовый к эксплуатации",
     r"\breal-time\b": "реального времени",
+    r"\bproduction\b": "рабочая среда",
+    r"\bretry\b": "повтор",
+    r"\bgraceful shutdown\b": "мягкое завершение",
     r"\bтакж\b": "также",
     r"\bвкомпилиру\w*\b": "встраивается при компиляции",
     r"\bв рамкахх\b": "в рамках",
+}
+
+# В словаре английский эквивалент нужен для поиска документации. Точные значения
+# протоколов и конфигурации исключаются функцией prose_lines вместе с кодом.
+ALLOWED_BY_FILE = {
+    "glossary.md": {r"\bretry\b"},
 }
 
 
@@ -35,8 +44,11 @@ def prose_lines(text: str):
 def main() -> int:
     errors: list[str] = []
     for path in sorted((ROOT / "docs").rglob("*.md")):
+        allowed = ALLOWED_BY_FILE.get(path.name, set())
         for number, line in prose_lines(path.read_text(encoding="utf-8")):
             for pattern, replacement in PATTERNS.items():
+                if pattern in allowed:
+                    continue
                 if re.search(pattern, line, flags=re.IGNORECASE):
                     errors.append(
                         f"{path.relative_to(ROOT)}:{number}: замените на «{replacement}»"

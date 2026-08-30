@@ -43,3 +43,32 @@ func TestRunLimitedReturnsCause(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestRunLimitedWaitsForStartedWork(t *testing.T) {
+	want := errors.New("failed")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+
+	go func() {
+		done <- RunLimited(t.Context(), 2, []int{0, 1, 2}, func(_ context.Context, job int) error {
+			if job == 0 {
+				close(started)
+				<-release
+				return nil
+			}
+			return want
+		})
+	}()
+
+	<-started
+	select {
+	case err := <-done:
+		t.Fatalf("RunLimited returned before started work finished: %v", err)
+	default:
+	}
+	close(release)
+	if err := <-done; !errors.Is(err, want) {
+		t.Fatalf("err=%v", err)
+	}
+}

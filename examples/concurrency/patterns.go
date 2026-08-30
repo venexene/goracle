@@ -25,12 +25,16 @@ func RunLimited[T any](ctx context.Context, limit int, jobs []T, work func(conte
 	defer cancel(nil)
 	semaphore := make(chan struct{}, limit)
 	done := make(chan struct{}, len(jobs))
+	started := 0
+
+schedule:
 	for _, job := range jobs {
 		select {
 		case semaphore <- struct{}{}:
 		case <-ctx.Done():
-			return context.Cause(ctx)
+			break schedule
 		}
+		started++
 		go func() {
 			defer func() { <-semaphore; done <- struct{}{} }()
 			if err := work(ctx, job); err != nil {
@@ -38,7 +42,7 @@ func RunLimited[T any](ctx context.Context, limit int, jobs []T, work func(conte
 			}
 		}()
 	}
-	for range jobs {
+	for range started {
 		<-done
 	}
 	return context.Cause(ctx)

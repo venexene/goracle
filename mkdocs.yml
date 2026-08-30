@@ -1,5 +1,5 @@
 site_name: Goracle
-site_description: 'Открытая база знаний по внутреннему устройству Go — от планировщика до архитектурных паттернов'
+site_description: 'Открытая база знаний по Go — от первых программ до устройства среды выполнения и архитектуры'
 site_author: '@venexene'
 repo_url: https://github.com/venexene/goracle
 edit_uri: edit/main/
@@ -69,17 +69,21 @@ plugins:
 
 nav:
   - Главная: index.md
+  - Начать обучение:
+      - Маршруты: learning-paths.md
+      - Практикум: practice.md
+      - Словарь: glossary.md
   - Основы информатики:
       - Обзор: computer-science/index.md
       - Карта конкурентности: computer-science/concurrency-map.md
       - Алгоритмы и структуры данных: computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md
       - Параллельность и конкурентность: computer-science/Параллельность и конкрентность/concurrency.md
-      - Конкурентные паттерны:
+      - Шаблоны конкурентного кода:
           - Учебная глава: computer-science/Конкурентные паттерны в Go/concurrency-patterns.md
           - Полный справочник: computer-science/Конкурентные паттерны в Go/reference.md
       - Компьютерные сети: computer-science/Компьютерные сети/computer-networks.md
       - Компьютерные системы: computer-science/Компьютерные системы/computer-systems.md
-  - Архитектура и дизайн:
+  - Архитектура и проектирование:
       - Обзор: architecture/index.md
       - Принципы программирования: architecture/Принципы программирования/programming-principles.md
       - ООП в Go: architecture/ООП/oop.md
@@ -112,7 +116,7 @@ nav:
           - Координация: go-details/Синхронизация в Go/coordination.md
           - Конкурентные контейнеры: go-details/Синхронизация в Go/concurrent-containers.md
           - Полный справочник: go-details/Синхронизация в Go/reference.md
-      - Дженерики: go-details/Дженерики в Go/generics.md
+      - Обобщённый код: go-details/Дженерики в Go/generics.md
   - Инструменты и практика:
       - Обзор: tools-and-practice/index.md
       - Тестирование: tools-and-practice/Тестирование в Go/testing.md
@@ -123,7 +127,7 @@ nav:
           - PostgreSQL и производительность: tools-and-practice/Базы данных в Go/postgres-and-performance.md
           - Миграции и тестирование: tools-and-practice/Базы данных в Go/migrations-and-testing.md
           - Полный справочник: tools-and-practice/Базы данных в Go/reference.md
-      - Логирование: tools-and-practice/Логирование в Go/logging.md
+      - Журналирование: tools-and-practice/Логирование в Go/logging.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
       - Планировщик Go:
@@ -145,3 +149,6 @@ nav:
           - Практическое руководство: go-fundamentals/Инлайн в Go/inlining.md
           - Устройство компилятора: go-fundamentals/Инлайн в Go/compiler-reference.md
       - Выравнивание: go-fundamentals/Выравнивание в Go/alignment.md
+  - О проекте:
+      - Стандарт материала: project/content-standard.md
+      - Лист рецензирования: project/review-checklist.md

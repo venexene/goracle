@@ -14,5 +14,5 @@
 Перенаправления и файлы cookie относятся к политике `http.Client`; параметры сокетов,
 прокси и пула — к `http.Transport`.
 
-Продолжение: [клиент и `Transport`](reference.md#12-http-transport) и
-[конкурентность сервера](reference.md#13).
+Продолжение: [клиент и `Transport`](reference.md#http-client) и
+[конкурентность сервера](reference.md#server-concurrency).

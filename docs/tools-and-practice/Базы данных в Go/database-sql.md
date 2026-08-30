@@ -14,5 +14,5 @@
 и фиксируйте только после всех успешных операций. Внутри используйте только `tx`, а не
 исходный `db`.
 
-Подробнее: [пакет `database/sql`](reference.md#6-databasesql) и
-[транзакции](reference.md#9-go).
+Подробнее: [пакет `database/sql`](reference.md#database-sql) и
+[транзакции](reference.md#transactions).

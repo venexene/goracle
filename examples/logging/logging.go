@@ -25,3 +25,12 @@ func RequestCompleted(ctx context.Context, logger *slog.Logger, route string, st
 		"status", status,
 	)
 }
+
+func Redact(groups []string, attr slog.Attr) slog.Attr {
+	switch attr.Key {
+	case "password", "token", "authorization":
+		return slog.String(attr.Key, "[скрыто]")
+	default:
+		return attr
+	}
+}

@@ -1,0 +1,162 @@
+[
+  {
+    "topic": "Алгоритмы и структуры данных",
+    "document": "docs/computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md",
+    "checks": ["algorithms.TestDijkstra", "algorithms.TestTopologicalSortRejectsCycle", "algorithms.TestDSU"]
+  },
+  {
+    "topic": "Компьютерные сети",
+    "document": "docs/computer-science/Компьютерные сети/computer-networks.md",
+    "checks": ["network.TestFrameRoundTrip", "network.TestReadFrameChecksLimitBeforeAllocation"]
+  },
+  {
+    "topic": "Компьютерные системы",
+    "document": "docs/computer-science/Компьютерные системы/computer-systems.md",
+    "checks": ["systems.TestByteOrder", "systems.TestAtomicCounter"]
+  },
+  {
+    "topic": "Параллельность и конкурентность",
+    "document": "docs/computer-science/Параллельность и конкрентность/concurrency.md",
+    "checks": ["systems.TestAtomicCounter", "concurrency.TestRunLimited", "concurrency.TestRunLimitedReturnsCause"]
+  },
+  {
+    "topic": "Шаблоны конкурентного кода",
+    "document": "docs/computer-science/Конкурентные паттерны в Go/concurrency-patterns.md",
+    "checks": ["concurrency.TestMap", "concurrency.TestRunLimited", "language.TestMergeCancellation"]
+  },
+  {
+    "topic": "Принципы программирования",
+    "document": "docs/architecture/Принципы программирования/programming-principles.md",
+    "checks": ["architecture.TestConsumerOwnedInterfaceCanBeSubstituted", "architecture.TestTransferStopsAfterDebitError"]
+  },
+  {
+    "topic": "ООП в Go",
+    "document": "docs/architecture/ООП/oop.md",
+    "checks": ["architecture.TestConsumerOwnedInterfaceCanBeSubstituted", "language.TestCloseAllAndTypedNil"]
+  },
+  {
+    "topic": "Чистая архитектура",
+    "document": "docs/architecture/Чистая архитектура/clean-architecture.md",
+    "checks": ["architecture.TestTransferUsesOneTransactionBoundary", "architecture.TestTransferStopsAfterDebitError"]
+  },
+  {
+    "topic": "Микросервисная архитектура",
+    "document": "docs/architecture/Микросервисная архитектура/microservices.md",
+    "checks": ["architecture.TestIdempotentCommandAppliesEffectOnce", "architecture.TestFailedCommandCanBeRetried"]
+  },
+  {
+    "topic": "HTTP",
+    "document": "docs/architecture/HTTP/http.md",
+    "checks": ["httpserver.TestGreeting", "taskservice.TestHandlerRejectsInvalidInput", "taskservice.TestServeStopsAfterCancellation"]
+  },
+  {
+    "topic": "gRPC",
+    "document": "docs/architecture/gRPC/index.md",
+    "checks": ["rpccontract.TestCodeForErrorDoesNotExposeInternalFailure", "rpccontract.TestInterceptorChainOrder"]
+  },
+  {
+    "topic": "Типы данных",
+    "document": "docs/go-details/Типы данных в Go/types.md",
+    "checks": ["language.TestAddUint64", "language.TestCountAndSafeEqual"]
+  },
+  {
+    "topic": "Массивы и срезы",
+    "document": "docs/go-details/Массивы и срезы в Go/arrays-and-slices.md",
+    "checks": ["language.TestCloneDoesNotShareElements", "language.TestArrayCopyAndSliceSharing"]
+  },
+  {
+    "topic": "Мапы",
+    "document": "docs/go-details/Мапы в Go/maps.md",
+    "checks": ["language.TestEvenValues", "language.TestMapLookupDistinguishesMissingKey"]
+  },
+  {
+    "topic": "Строки",
+    "document": "docs/go-details/Строки в Go/strings.md",
+    "checks": ["language.TestReverseRunes", "language.TestStringBytesAndRunes"]
+  },
+  {
+    "topic": "Интерфейсы",
+    "document": "docs/go-details/Интерфейсы в Go/interfaces.md",
+    "checks": ["language.TestCountAndSafeEqual", "language.TestCloseAllAndTypedNil"]
+  },
+  {
+    "topic": "Каналы",
+    "document": "docs/go-details/Каналы в Go/channels.md",
+    "checks": ["language.TestMergeCancellation", "language.TestClosedChannelReturnsZeroAndFalse"]
+  },
+  {
+    "topic": "defer",
+    "document": "docs/go-details/Defer в Go/defer.md",
+    "checks": ["language.TestDeferUsesLIFOOrder", "language.TestCloseAllAndTypedNil"]
+  },
+  {
+    "topic": "Замыкания",
+    "document": "docs/go-details/Замыкания в Go/closures.md",
+    "checks": ["language.TestLoopClosures", "language.TestAccumulatorClosure"]
+  },
+  {
+    "topic": "Ошибки",
+    "document": "docs/go-details/Ошибки в Go/errors.md",
+    "checks": ["language.TestJoinedErrorsKeepBothCauses", "language.TestCloseAllAndTypedNil"]
+  },
+  {
+    "topic": "Контекст",
+    "document": "docs/go-details/Контекст в Go/context.md",
+    "checks": ["language.TestCancelCause", "language.TestMergeCancellation", "taskservice.TestServeStopsAfterCancellation"]
+  },
+  {
+    "topic": "Синхронизация",
+    "document": "docs/go-details/Синхронизация в Go/synchronization.md",
+    "checks": ["systems.TestAtomicCounter", "concurrency.TestRunLimited"]
+  },
+  {
+    "topic": "Обобщённый код",
+    "document": "docs/go-details/Дженерики в Go/generics.md",
+    "checks": ["language.TestGenericClonePreservesNamedSlice", "language.TestCountAndSafeEqual"]
+  },
+  {
+    "topic": "Тестирование",
+    "document": "docs/tools-and-practice/Тестирование в Go/testing.md",
+    "checks": ["httpserver.TestGreeting", "taskservice.TestHandlerRejectsInvalidInput", "database.TestUsersQuery"]
+  },
+  {
+    "topic": "Базы данных",
+    "document": "docs/tools-and-practice/Базы данных в Go/db.md",
+    "checks": ["database.TestUsersQuery", "database.TestEscapeLike", "database.TestRetryRepeatsWholeOperation", "taskservice.TestSQLStoreCreatesTaskWithParameterizedQuery"]
+  },
+  {
+    "topic": "Журналирование",
+    "document": "docs/tools-and-practice/Логирование в Go/logging.md",
+    "checks": ["logging.TestStableEventSchema", "logging.TestSensitiveAttributesAreRedacted"]
+  },
+  {
+    "topic": "Планировщик",
+    "document": "docs/go-fundamentals/Планировщик Go/scheduler.md",
+    "checks": ["runtimeinfo.TestSchedulerSnapshot", "concurrency.TestRunLimited"]
+  },
+  {
+    "topic": "Память",
+    "document": "docs/go-fundamentals/Память в Go/memory.md",
+    "checks": ["runtimeinfo.TestHeapGoalMetric", "runtimeinfo.TestOffsetsFitInsideValue"]
+  },
+  {
+    "topic": "Анализ времени жизни",
+    "document": "docs/go-fundamentals/Escape Analysis в Go/escape-analysis.md",
+    "checks": ["runtimeinfo.BenchmarkValueCall", "runtimeinfo.BenchmarkInterfaceCall"]
+  },
+  {
+    "topic": "Сборщик мусора",
+    "document": "docs/go-fundamentals/Сбощик мусора в Go/garbage-collector.md",
+    "checks": ["runtimeinfo.TestHeapGoalMetric", "runtimeinfo.BenchmarkValueCall"]
+  },
+  {
+    "topic": "Встраивание функций",
+    "document": "docs/go-fundamentals/Инлайн в Go/inlining.md",
+    "checks": ["runtimeinfo.BenchmarkValueCall", "runtimeinfo.BenchmarkInterfaceCall"]
+  },
+  {
+    "topic": "Выравнивание",
+    "document": "docs/go-fundamentals/Выравнивание в Go/alignment.md",
+    "checks": ["runtimeinfo.TestOffsetsFitInsideValue", "systems.TestByteOrder"]
+  }
+]

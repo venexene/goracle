@@ -15,5 +15,5 @@
 соединения — через `httptest.NewServer`. Конкурентный доступ к общему состоянию должен
 проходить под тестом с детектором гонок.
 
-Продолжение: [обзор `net/http`](reference.md#8-nethttp) и
-[маршрутизация `ServeMux`](reference.md#10-servemux).
+Продолжение: [обзор `net/http`](reference.md#net-http-overview) и
+[маршрутизация `ServeMux`](reference.md#serve-mux).

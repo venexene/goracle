@@ -2,6 +2,10 @@
 
 > **Проверено:** Go 1.27 · **Уровень:** стажёр — младший разработчик
 
+**Перед чтением:** ошибки, контекст и устройство HTTP-запроса. **После главы:** вы
+сможете определить устойчивую схему события `slog`, скрыть чувствительные данные
+и связать запись с трассой. [Задания и самопроверка](../../practice.md#logging).
+
 ## 1. Введение
 
 Логи — единственный способ узнать, что происходит внутри работающей программы. Без логов рабочий сервис — чёрный ящик: падает, но неизвестно почему и на каком запросе.
@@ -1042,7 +1046,7 @@ func TestService(t *testing.T) {
 
 * [pkg.go.dev/log/slog](https://pkg.go.dev/log/slog) — полная документация пакета `log/slog`
 * [Go Blog: Structured Logging with slog](https://go.dev/blog/slog) — официальный блог-пост от команды Go
-* [slog: Proposal](https://go.googlesource.com/proposal/+/master/design/56345-structured-logging.md) — дизайн-документ `slog`
+* [Проект `slog`](https://go.googlesource.com/proposal/+/f88ca18/design/56345-structured-logging.md) — закреплённая редакция документа о проектировании `slog`
 * [pkg.go.dev/log](https://pkg.go.dev/log) — документация стандартного пакета `log`
 
 ### Туториалы и статьи
@@ -1065,3 +1069,11 @@ func TestService(t *testing.T) {
 
 * [12 Factor App: Logs](https://12factor.net/logs) — логи как поток событий
 * [Google SRE Book: Monitoring Distributed Systems](https://sre.google/sre-book/monitoring-distributed-systems/) — логирование и мониторинг
+
+## Краткий итог
+
+- Запись журнала описывает событие устойчивым именем и набором структурированных полей.
+- Пароли, токены и полные тела запросов не должны попадать в журнал.
+- Уровень и место записи выбирает слой, который знает значение ошибки для операции.
+
+Дальше: добавьте безопасное журналирование в [сквозной проект](../../practice.md#capstone).

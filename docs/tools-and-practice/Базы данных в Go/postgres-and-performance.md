@@ -15,5 +15,5 @@ BUFFERS)` и число обращений на один запрос прило
 экземплярам. Слишком большой пул повышает конкуренцию, а не обязательно пропускную
 способность.
 
-Подробнее: [PostgreSQL и `pgx`](reference.md#12-pgx-postgresql) и
-[производительность запросов](reference.md#16).
+Подробнее: [PostgreSQL и `pgx`](reference.md#pgx) и
+[производительность запросов](reference.md#database-performance).
