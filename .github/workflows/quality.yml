@@ -1,0 +1,45 @@
+name: Проверка качества
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python scripts/check_docs.py
+      - run: python scripts/check_language.py
+      - run: mkdocs build --strict
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: >-
+            --no-progress --max-retries 2 --timeout 20
+            --accept 200,204,206,429
+            --root-dir ${{ github.workspace }}
+            './**/*.md'
+          fail: true
+
+  examples:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: examples/go.mod
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go test -race ./...

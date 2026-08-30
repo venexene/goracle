@@ -56,6 +56,7 @@ markdown_extensions:
 
 extra_javascript:
   - javascripts/katex.js
+  - javascripts/legacy-anchors.js
   - https://unpkg.com/katex@0/dist/katex.min.js
   - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
 
@@ -70,9 +71,12 @@ nav:
   - Главная: index.md
   - Computer Science:
       - Обзор: computer-science/index.md
+      - Карта конкурентности: computer-science/concurrency-map.md
       - Алгоритмы и структуры данных: computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md
       - Параллельность и конкурентность: computer-science/Параллельность и конкрентность/concurrency.md
-      - Конкурентные паттерны: computer-science/Конкурентные паттерны в Go/concurrency-patterns.md
+      - Конкурентные паттерны:
+          - Учебная глава: computer-science/Конкурентные паттерны в Go/concurrency-patterns.md
+          - Полный справочник: computer-science/Конкурентные паттерны в Go/reference.md
       - Компьютерные сети: computer-science/Компьютерные сети/computer-networks.md
       - Компьютерные системы: computer-science/Компьютерные системы/computer-systems.md
   - Архитектура и дизайн:
@@ -81,7 +85,13 @@ nav:
       - ООП в Go: architecture/ООП/oop.md
       - Чистая архитектура: architecture/Чистая архитектура/clean-architecture.md
       - Микросервисная архитектура: architecture/Микросервисная архитектура/microservices.md
-      - HTTP: architecture/HTTP/http.md
+      - HTTP:
+          - Учебный маршрут: architecture/HTTP/http.md
+          - Протокол: architecture/HTTP/protocol.md
+          - Сервер net/http: architecture/HTTP/server.md
+          - Клиент и транспорт: architecture/HTTP/client.md
+          - Безопасность и эксплуатация: architecture/HTTP/security-and-operations.md
+          - Полный справочник: architecture/HTTP/reference.md
       - gRPC: architecture/gRPC/index.md
   - Детали языка:
       - Обзор: go-details/index.md
@@ -95,18 +105,43 @@ nav:
       - Замыкания: go-details/Замыкания в Go/closures.md
       - Ошибки: go-details/Ошибки в Go/errors.md
       - Контекст: go-details/Контекст в Go/context.md
-      - Синхронизация: go-details/Синхронизация в Go/synchronization.md
+      - Синхронизация:
+          - Учебный маршрут: go-details/Синхронизация в Go/synchronization.md
+          - Атомарные операции и модель памяти: go-details/Синхронизация в Go/atomics-and-memory-model.md
+          - Блокировки: go-details/Синхронизация в Go/locks.md
+          - Координация: go-details/Синхронизация в Go/coordination.md
+          - Конкурентные контейнеры: go-details/Синхронизация в Go/concurrent-containers.md
+          - Полный справочник: go-details/Синхронизация в Go/reference.md
       - Дженерики: go-details/Дженерики в Go/generics.md
   - Инструменты и практика:
       - Обзор: tools-and-practice/index.md
       - Тестирование: tools-and-practice/Тестирование в Go/testing.md
-      - Базы данных в Go: tools-and-practice/Базы данных в Go/db.md
+      - Базы данных в Go:
+          - Учебный маршрут: tools-and-practice/Базы данных в Go/db.md
+          - SQL и моделирование: tools-and-practice/Базы данных в Go/sql-and-modeling.md
+          - database/sql: tools-and-practice/Базы данных в Go/database-sql.md
+          - PostgreSQL и производительность: tools-and-practice/Базы данных в Go/postgres-and-performance.md
+          - Миграции и тестирование: tools-and-practice/Базы данных в Go/migrations-and-testing.md
+          - Полный справочник: tools-and-practice/Базы данных в Go/reference.md
       - Логирование: tools-and-practice/Логирование в Go/logging.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
-      - Планировщик Go: go-fundamentals/Планировщик Go/scheduler.md
-      - Память в Go: go-fundamentals/Память в Go/memory.md
-      - Escape Analysis: go-fundamentals/Escape Analysis в Go/escape-analysis.md
-      - Сборщик мусора: go-fundamentals/Сбощик мусора в Go/garbage-collector.md
-      - Инлайн: go-fundamentals/Инлайн в Go/inlining.md
+      - Планировщик Go:
+          - Учебный маршрут: go-fundamentals/Планировщик Go/scheduler.md
+          - ОС, процессы и горутины: go-fundamentals/Планировщик Go/os-basics.md
+          - Модель GMP: go-fundamentals/Планировщик Go/gmp.md
+          - Диагностика: go-fundamentals/Планировщик Go/diagnostics.md
+          - Полный справочник: go-fundamentals/Планировщик Go/reference.md
+      - Память в Go:
+          - Модель и диагностика: go-fundamentals/Память в Go/memory.md
+          - Устройство Go 1.27: go-fundamentals/Память в Go/runtime-reference.md
+      - Анализ времени жизни:
+          - Практическое руководство: go-fundamentals/Escape Analysis в Go/escape-analysis.md
+          - Устройство компилятора: go-fundamentals/Escape Analysis в Go/compiler-reference.md
+      - Сборщик мусора:
+          - Модель и диагностика: go-fundamentals/Сбощик мусора в Go/garbage-collector.md
+          - Устройство Go 1.27: go-fundamentals/Сбощик мусора в Go/runtime-reference.md
+      - Встраивание функций:
+          - Практическое руководство: go-fundamentals/Инлайн в Go/inlining.md
+          - Устройство компилятора: go-fundamentals/Инлайн в Go/compiler-reference.md
       - Выравнивание: go-fundamentals/Выравнивание в Go/alignment.md
