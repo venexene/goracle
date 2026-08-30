@@ -1,7 +1,6 @@
 # Тестирование в Go
 
 > **Проверено:** Go 1.27 · **Уровень:** стажёр — младший разработчик
-> Нормы языка, открытые интерфейсы и детали реализации имеют разную устойчивость; изменяемые детали в тексте оговариваются отдельно.
 
 ## 1. Введение
 
@@ -1223,7 +1222,6 @@ go test -race -count=1 -shuffle=on -timeout=5m ./...
 
 * [Prefer table driven tests](https://dave.cheney.net/2019/05/07/prefer-table-driven-tests) — Dave Cheney о табличных тестах
 * [How to write benchmarks in Go](https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go) — Dave Cheney: `b.N`, `-benchmem`
-* [5 simple tips for writing unit tests in Go](https://medium.com/@matryer/5-simple-tips-and-tricks-for-writing-unit-tests-in-golang-619653f90742) — Mat Ryer: `t.Helper`, test helpers
 * [Testing in Go: Subtests](https://ieftimov.com/posts/testing-in-go-subtests/) — Ilija Eftimov: глубокий разбор `t.Run`
 * [Testing in Go: Clean Tests Using t.Cleanup](https://ieftimov.com/posts/testing-in-go-clean-tests-using-t-cleanup/) — Ilija Eftimov: `t.Cleanup` vs `defer`
 

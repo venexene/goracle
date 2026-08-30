@@ -1,7 +1,6 @@
 # Логирование в Go
 
 > **Проверено:** Go 1.27 · **Уровень:** стажёр — младший разработчик
-> Нормы языка, открытые интерфейсы и детали реализации имеют разную устойчивость; изменяемые детали в тексте оговариваются отдельно.
 
 ## 1. Введение
 
@@ -1049,8 +1048,6 @@ func TestService(t *testing.T) {
 ### Туториалы и статьи
 
 * [A Comprehensive Guide to Structured Logging in Go](https://betterstack.com/community/guides/logging/logging-in-go/) — Better Stack: от `log` до `slog`
-* [Using slog for Structured Logging in Go](https://www.alexedwards.net/blog/using-slog) — Alex Edwards
-* [Go slog: The Ultimate Guide](https://blog.jetbrains.com/go/2023/10/10/go-slog-ultimate-guide/) — JetBrains
 
 ### Библиотеки
 

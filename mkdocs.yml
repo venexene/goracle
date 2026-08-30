@@ -69,7 +69,7 @@ plugins:
 
 nav:
   - Главная: index.md
-  - Computer Science:
+  - Основы информатики:
       - Обзор: computer-science/index.md
       - Карта конкурентности: computer-science/concurrency-map.md
       - Алгоритмы и структуры данных: computer-science/Алгоритмы и структуры данных/algorithms-and-data-structures.md

@@ -1,7 +1,6 @@
 # Полный справочник по HTTP и `net/http`
 
 > **Проверено:** Go 1.27 · **Уровень:** стажёр — младший разработчик
-> Нормы HTTP, открытые интерфейсы `net/http` и внутренние детали реализации имеют разную устойчивость.
 
 ## 1. Введение
 
@@ -2726,7 +2725,7 @@ Go 1.27 можно изолировать через `testing/synctest`, не з
 ### Протокол HTTP
 
 * [MDN: HTTP](https://developer.mozilla.org/ru/docs/Web/HTTP) — обзор протокола, эволюция, безопасность (на русском)
-* [HTTP/2 Explained](https://daniel.haxx.se/http2-explained/) — Daniel Stenberg, бесплатная онлайн-книга об устройстве HTTP/2
+* [RFC 9113: HTTP/2](https://www.rfc-editor.org/info/rfc9113/) — действующая спецификация HTTP/2
 * [HTTP/3 Explained](https://daniel.haxx.se/http3-explained/) — Daniel Stenberg, продолжение про QUIC и HTTP/3
 * [High Performance Browser Networking](https://hpbn.co/) — Ilya Grigorik, главы 9–13: HTTP/1.X, HTTP/2, HTTP/3, оптимизация
 
@@ -2742,4 +2741,3 @@ Go 1.27 можно изолировать через `testing/synctest`, не з
 ### Смежные темы
 
 * [Making and using middleware in Go](https://www.alexedwards.net/blog/making-and-using-middleware) — Alex Edwards: паттерны middleware и цепочки
-* [GopherCon 2016: Understanding net/http](https://www.youtube.com/watch?v=6UBSjPjL3Qw) — видео-доклад разработчиков пакета

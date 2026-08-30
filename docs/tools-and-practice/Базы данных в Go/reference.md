@@ -1,7 +1,6 @@
 # Полный справочник по базам данных в Go
 
 > **Проверено:** Go 1.27 · **Уровень:** стажёр — младший разработчик
-> Нормы SQL, открытые интерфейсы Go и детали конкретных СУБД имеют разную устойчивость; изменяемые детали в тексте оговариваются отдельно.
 
 ## 1. Введение
 
@@ -1904,7 +1903,7 @@ db.Query("SELECT * FROM users WHERE name LIKE $1 ESCAPE '\\'", "%"+escaped+"%")
 
 Автоматизируйте поиск уязвимостей:
 - [`gosec`](https://github.com/securego/gosec) — находит `fmt.Sprintf` c SQL в коде
-- [`sqlint`](https://github.com/srcclr/sqlint) — проверяет SQL-строки
+- [`sqlc vet`](https://docs.sqlc.dev/en/latest/howto/vet.html) — проверяет SQL-запросы по настраиваемым правилам
 - Правило в линтере: запретить `fmt.Sprintf` в комбинации с `Query`/`Exec`
 
 > **Зачем это Go-разработчику.** SQL-инъекция — не теория из учебника. OWASP ставит её на 3-е место среди всех веб-уязвимостей. Одна забытая конкатенация строк — и база данных скомпрометирована. Плейсхолдеры решают 95% проблем, белые списки — оставшиеся 5% (имена колонок). Автоматизируйте проверки в CI: `gosec` найдёт `fmt.Sprintf` в SQL-контексте до того, как код попадёт в рабочей среде.
@@ -2647,12 +2646,10 @@ N+1 обнаруживают не только в ORM: считайте запр
 ### GORM
 
 * [GORM Guides](https://gorm.io/docs/) — официальная документация: модели, запросы, ассоциации, миграции
-* [GORM: The Good, The Bad, and The Ugly](https://dev.to/nadirbasalamah/gorm-the-good-the-bad-and-the-ugly-4p8o) — Nadir Basalamah: взвешенный разбор плюсов и минусов
 
 ### Миграции
 
 * [golang-migrate](https://github.com/golang-migrate/migrate) — репозиторий с документацией: CLI, API, `embed`
-* [Database Migrations in Go](https://medium.com/@cpk2468/database-migrations-in-golang-79bbf2e0c4a1) — пошаговый туториал по `golang-migrate`
 
 ### Безопасность
 
@@ -2668,7 +2665,6 @@ N+1 обнаруживают не только в ORM: считайте запр
 ### Тестирование
 
 * [testcontainers-go](https://golang.testcontainers.org/) — официальная документация: PostgreSQL, MySQL, Redis в тестах
-* [Testing Databases in Go](https://dev.to/kevin_van_der_wijst/testing-databases-in-go-4kbf) — Kevin van der Wijst: транзакционные тесты, testcontainers
 
 ### SQLite в Go
 
