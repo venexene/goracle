@@ -2729,7 +2729,7 @@ server := &http.Server{
 а программные посредники обновлять совместно.
 
 Минимальная наблюдаемость обработчика: метод, шаблон маршрута (не сырой путь с
-идентификаторами), код, длительность, размер и идентификатор трассы. Не помещайте в
+идентификаторами), код, длительность, размер и идентификатор трассировки. Не помещайте в
 метки метрик URL, пользователя или текст ошибки с неограниченным числом значений.
 
 Проверяйте маршруты и посредники через `httptest.NewRequest` и `httptest.ResponseRecorder`,
@@ -2750,7 +2750,7 @@ Go 1.27 можно изолировать через `testing/synctest`, не з
 * [Writing Web Applications](https://go.dev/doc/articles/wiki/) — официальный туториал go.dev
 * [pkg.go.dev/net/http](https://pkg.go.dev/net/http) — документация пакета
 * [On concurrency in Go HTTP servers](https://eli.thegreenplace.net/2019/on-concurrency-in-go-http-servers/) — Eli Bendersky: конкурентная модель, `go c.serve()`, гонки данных, rate limiting
-* [Life of an HTTP request in Go](https://eli.thegreenplace.net/2021/life-of-an-http-request-in-a-go-server/) — Eli Bendersky: трейсинг запроса от `Accept` до handler'а
+* [Life of an HTTP request in Go](https://eli.thegreenplace.net/2021/life-of-an-http-request-in-a-go-server/) — Eli Bendersky: трассировка запроса от `Accept` до обработчика
 * [The complete guide to Go net/http timeouts](https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/) — Cloudflare: все таймауты сервера и клиента
 * [Routing Enhancements in Go 1.22](https://go.dev/blog/routing-enhancements) — Go Blog: паттерны, wildcards, `PathValue`
 

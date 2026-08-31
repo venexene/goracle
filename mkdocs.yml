@@ -130,6 +130,7 @@ nav:
       - Журналирование: tools-and-practice/Логирование в Go/logging.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
+      - Компиляция и запуск: go-fundamentals/Компиляция и запуск Go/compilation-and-startup.md
       - Планировщик Go:
           - Учебный маршрут: go-fundamentals/Планировщик Go/scheduler.md
           - ОС, процессы и горутины: go-fundamentals/Планировщик Go/os-basics.md
