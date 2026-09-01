@@ -12,6 +12,13 @@ type Value struct {
 	Code    uint16
 }
 
+// CompactValue хранит те же данные, но группирует поля по выравниванию.
+type CompactValue struct {
+	Count   int64
+	Code    uint16
+	Enabled bool
+}
+
 type SchedulerSnapshot struct {
 	LogicalCPUs int
 	GOMAXPROCS  int
@@ -47,6 +54,17 @@ type Layout struct {
 
 func ValueLayout() Layout {
 	var value Value
+	return Layout{
+		Size:          unsafe.Sizeof(value),
+		Alignment:     unsafe.Alignof(value),
+		EnabledOffset: unsafe.Offsetof(value.Enabled),
+		CountOffset:   unsafe.Offsetof(value.Count),
+		CodeOffset:    unsafe.Offsetof(value.Code),
+	}
+}
+
+func CompactValueLayout() Layout {
+	var value CompactValue
 	return Layout{
 		Size:          unsafe.Sizeof(value),
 		Alignment:     unsafe.Alignof(value),

@@ -137,7 +137,7 @@
   {
     "topic": "Память",
     "document": "docs/go-fundamentals/Память в Go/memory.md",
-    "checks": ["runtimeinfo.TestHeapGoalMetric", "runtimeinfo.TestOffsetsFitInsideValue"]
+    "checks": ["runtimeinfo.TestMemoryMetricsAreAvailable", "runtimeinfo.BenchmarkRetainedBlocks", "runtimeinfo.BenchmarkTemporaryBlocks"]
   },
   {
     "topic": "Анализ времени жизни",
@@ -157,6 +157,6 @@
   {
     "topic": "Выравнивание",
     "document": "docs/go-fundamentals/Память в Go/Выравнивание/alignment.md",
-    "checks": ["runtimeinfo.TestOffsetsFitInsideValue", "systems.TestByteOrder"]
+    "checks": ["runtimeinfo.TestOffsetsFitInsideValue", "runtimeinfo.TestCompactValueDoesNotGrow", "runtimeinfo.TestAMD64ScalarAlignments"]
   }
 ]

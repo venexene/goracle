@@ -68,10 +68,12 @@ API, обработкой ошибок и табличными тестами.
 2. [Компиляция и оптимизации](go-fundamentals/Компиляция и оптимизации Go/compilation.md)
 3. [Планировщик](go-fundamentals/Планировщик Go/scheduler.md)
 4. [Память](go-fundamentals/Память в Go/memory.md)
-5. [Выравнивание](go-fundamentals/Память в Go/Выравнивание/alignment.md)
-6. [Анализ времени жизни](go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/escape-analysis.md)
-7. [Сборщик мусора](go-fundamentals/Сбощик мусора в Go/garbage-collector.md)
-8. [Встраивание функций](go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/inlining.md)
+5. [Аллокатор](go-fundamentals/Память в Go/allocator.md) и [стеки горутин](go-fundamentals/Память в Go/stacks.md)
+6. [Диагностика памяти](go-fundamentals/Память в Go/diagnostics.md)
+7. [Выравнивание](go-fundamentals/Память в Go/Выравнивание/alignment.md)
+8. [Анализ времени жизни](go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/escape-analysis.md)
+9. [Сборщик мусора](go-fundamentals/Сбощик мусора в Go/garbage-collector.md)
+10. [Встраивание функций](go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/inlining.md)
 
 **Результат:** читатель может объяснить путь сборки, выбрать профиль,
 интерпретировать основные метрики среды выполнения и проверять гипотезу об

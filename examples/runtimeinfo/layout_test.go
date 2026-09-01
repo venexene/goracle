@@ -1,6 +1,10 @@
 package runtimeinfo
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+	"unsafe"
+)
 
 func TestOffsetsFitInsideValue(t *testing.T) {
 	layout := ValueLayout()
@@ -9,6 +13,26 @@ func TestOffsetsFitInsideValue(t *testing.T) {
 	}
 	if layout.CodeOffset >= layout.Size || layout.EnabledOffset >= layout.Size {
 		t.Fatalf("offsets do not fit: %+v", layout)
+	}
+}
+
+func TestCompactValueDoesNotGrow(t *testing.T) {
+	before := ValueLayout()
+	after := CompactValueLayout()
+	if after.Size > before.Size {
+		t.Fatalf("compact layout grew: before=%+v after=%+v", before, after)
+	}
+}
+
+func TestAMD64ScalarAlignments(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("проверка относится к amd64")
+	}
+	if got := unsafe.Alignof(complex64(0)); got != 4 {
+		t.Fatalf("complex64 alignment = %d, want 4", got)
+	}
+	if got := unsafe.Alignof(complex128(0)); got != 8 {
+		t.Fatalf("complex128 alignment = %d, want 8", got)
 	}
 }
 

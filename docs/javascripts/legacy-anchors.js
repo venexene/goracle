@@ -26,7 +26,6 @@
     ["/tools-and-practice/Базы данных в Go/db", "/tools-and-practice/Базы данных в Go/reference"],
     ["/go-details/Синхронизация в Go/synchronization", "/go-details/Синхронизация в Go/reference"],
     ["/go-fundamentals/Планировщик Go/scheduler", "/go-fundamentals/Планировщик Go/reference"],
-    ["/go-fundamentals/Память в Go/memory", "/go-fundamentals/Память в Go/runtime-reference"],
     ["/go-fundamentals/Сбощик мусора в Go/garbage-collector", "/go-fundamentals/Сбощик мусора в Go/runtime-reference"],
     ["/go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/escape-analysis", "/go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/compiler-reference"],
     ["/go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/inlining", "/go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/compiler-reference"],

@@ -146,9 +146,13 @@ nav:
           - Диагностика: go-fundamentals/Планировщик Go/diagnostics.md
           - Полный справочник: go-fundamentals/Планировщик Go/reference.md
       - Память в Go:
-          - Модель и диагностика: go-fundamentals/Память в Go/memory.md
+          - Учебный маршрут: go-fundamentals/Память в Go/memory.md
+          - Виртуальная память процесса: go-fundamentals/Память в Go/virtual-memory.md
+          - Аллокатор Go 1.27: go-fundamentals/Память в Go/allocator.md
+          - Стеки горутин: go-fundamentals/Память в Go/stacks.md
+          - Диагностика: go-fundamentals/Память в Go/diagnostics.md
           - Выравнивание структур: go-fundamentals/Память в Go/Выравнивание/alignment.md
-          - Устройство Go 1.27: go-fundamentals/Память в Go/runtime-reference.md
+          - Версионный справочник: go-fundamentals/Память в Go/runtime-reference.md
       - Сборщик мусора:
           - Модель и диагностика: go-fundamentals/Сбощик мусора в Go/garbage-collector.md
           - Устройство Go 1.27: go-fundamentals/Сбощик мусора в Go/runtime-reference.md

@@ -13,7 +13,7 @@
 | `database` | белые списки динамических идентификаторов SQL |
 | `logging` | устойчивая схема JSON-журнала |
 | `architecture` | транзакционная граница сценария и перевод ошибок |
-| `runtimeinfo` | размер, выравнивание и смещения полей |
+| `runtimeinfo` | метрики памяти, профилируемые выделения, размер, выравнивание и смещения полей |
 | `systems` | порядок байтов и атомарный счётчик |
 | `rpccontract` | перевод ошибок и порядок перехватчиков RPC |
 | `taskservice` | сквозная HTTP-служба, конфигурация сервера, `database/sql`, контекст, журналирование и мягкое завершение |
@@ -39,3 +39,17 @@ go test ./runtimeinfo -run '^$' -bench 'Benchmark(Value|Interface)Call' -benchme
 Замер сравнивает только две маленькие функции из `runtimeinfo` в текущей сборке:
 он помогает увидеть влияние оптимизаций компилятора, но не доказывает общую
 стоимость любого интерфейсного вызова.
+
+Профиль мест выделения для учебного примера памяти:
+
+```bash
+go test ./runtimeinfo -run '^$' -bench 'Benchmark(Retained|Temporary)Blocks' \
+  -benchmem -memprofile memory.pprof
+go tool pprof -sample_index=inuse_space memory.pprof
+go tool pprof -sample_index=alloc_space memory.pprof
+```
+
+В первом представлении должен быть виден удерживаемый набор
+`BenchmarkRetainedBlocks`, во втором — накопленные временные выделения
+`BenchmarkTemporaryBlocks`. Точные числа зависят от выборки. Файл профиля и
+созданный для его чтения тестовый исполняемый файл не добавляются в репозиторий.
