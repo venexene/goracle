@@ -141,7 +141,7 @@
   },
   {
     "topic": "Анализ времени жизни",
-    "document": "docs/go-fundamentals/Escape Analysis в Go/escape-analysis.md",
+    "document": "docs/go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/escape-analysis.md",
     "checks": ["runtimeinfo.BenchmarkValueCall", "runtimeinfo.BenchmarkInterfaceCall"]
   },
   {
@@ -151,12 +151,12 @@
   },
   {
     "topic": "Встраивание функций",
-    "document": "docs/go-fundamentals/Инлайн в Go/inlining.md",
+    "document": "docs/go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/inlining.md",
     "checks": ["runtimeinfo.BenchmarkValueCall", "runtimeinfo.BenchmarkInterfaceCall"]
   },
   {
     "topic": "Выравнивание",
-    "document": "docs/go-fundamentals/Выравнивание в Go/alignment.md",
+    "document": "docs/go-fundamentals/Память в Go/Выравнивание/alignment.md",
     "checks": ["runtimeinfo.TestOffsetsFitInsideValue", "systems.TestByteOrder"]
   }
 ]

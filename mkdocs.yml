@@ -130,7 +130,15 @@ nav:
       - Журналирование: tools-and-practice/Логирование в Go/logging.md
   - Устройство Go:
       - Обзор: go-fundamentals/index.md
-      - Компиляция и запуск: go-fundamentals/Компиляция и запуск Go/compilation-and-startup.md
+      - Компиляция и оптимизации:
+          - Учебный маршрут: go-fundamentals/Компиляция и оптимизации Go/compilation.md
+          - Компиляция и запуск: go-fundamentals/Компиляция и оптимизации Go/compilation-and-startup.md
+          - Анализ времени жизни:
+              - Практическое руководство: go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/escape-analysis.md
+              - Устройство компилятора: go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/compiler-reference.md
+          - Встраивание функций:
+              - Практическое руководство: go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/inlining.md
+              - Устройство компилятора: go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/compiler-reference.md
       - Планировщик Go:
           - Учебный маршрут: go-fundamentals/Планировщик Go/scheduler.md
           - ОС, процессы и горутины: go-fundamentals/Планировщик Go/os-basics.md
@@ -139,17 +147,11 @@ nav:
           - Полный справочник: go-fundamentals/Планировщик Go/reference.md
       - Память в Go:
           - Модель и диагностика: go-fundamentals/Память в Go/memory.md
+          - Выравнивание структур: go-fundamentals/Память в Go/Выравнивание/alignment.md
           - Устройство Go 1.27: go-fundamentals/Память в Go/runtime-reference.md
-      - Анализ времени жизни:
-          - Практическое руководство: go-fundamentals/Escape Analysis в Go/escape-analysis.md
-          - Устройство компилятора: go-fundamentals/Escape Analysis в Go/compiler-reference.md
       - Сборщик мусора:
           - Модель и диагностика: go-fundamentals/Сбощик мусора в Go/garbage-collector.md
           - Устройство Go 1.27: go-fundamentals/Сбощик мусора в Go/runtime-reference.md
-      - Встраивание функций:
-          - Практическое руководство: go-fundamentals/Инлайн в Go/inlining.md
-          - Устройство компилятора: go-fundamentals/Инлайн в Go/compiler-reference.md
-      - Выравнивание: go-fundamentals/Выравнивание в Go/alignment.md
   - О проекте:
       - Стандарт материала: project/content-standard.md
       - Лист рецензирования: project/review-checklist.md
