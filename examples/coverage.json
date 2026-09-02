@@ -146,8 +146,8 @@
   },
   {
     "topic": "Сборщик мусора",
-    "document": "docs/go-fundamentals/Сбощик мусора в Go/garbage-collector.md",
-    "checks": ["runtimeinfo.TestHeapGoalMetric", "runtimeinfo.BenchmarkValueCall"]
+    "document": "docs/go-fundamentals/Сборщик мусора в Go/garbage-collector.md",
+    "checks": ["runtimeinfo.TestGCMetricsAreAvailable", "runtimeinfo.TestGCDifference", "runtimeinfo.TestHistogramQuantileUsesBucketBoundary", "runtimeinfo.TestGCWorkloadVariantsDoSameUsefulWrites", "runtimeinfo.BenchmarkGCWorkload"]
   },
   {
     "topic": "Встраивание функций",

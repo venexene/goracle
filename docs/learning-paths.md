@@ -72,7 +72,7 @@ API, обработкой ошибок и табличными тестами.
 6. [Диагностика памяти](go-fundamentals/Память в Go/diagnostics.md)
 7. [Выравнивание](go-fundamentals/Память в Go/Выравнивание/alignment.md)
 8. [Анализ времени жизни](go-fundamentals/Компиляция и оптимизации Go/Анализ времени жизни/escape-analysis.md)
-9. [Сборщик мусора](go-fundamentals/Сбощик мусора в Go/garbage-collector.md)
+9. [Сборщик мусора](go-fundamentals/Сборщик мусора в Go/garbage-collector.md)
 10. [Встраивание функций](go-fundamentals/Компиляция и оптимизации Go/Встраивание функций/inlining.md)
 
 **Результат:** читатель может объяснить путь сборки, выбрать профиль,

@@ -13,7 +13,7 @@
 | `database` | белые списки динамических идентификаторов SQL |
 | `logging` | устойчивая схема JSON-журнала |
 | `architecture` | транзакционная граница сценария и перевод ошибок |
-| `runtimeinfo` | метрики памяти, профилируемые выделения, размер, выравнивание и смещения полей |
+| `runtimeinfo` | метрики памяти и сборщика мусора, профилируемая нагрузка, размер, выравнивание и смещения полей |
 | `systems` | порядок байтов и атомарный счётчик |
 | `rpccontract` | перевод ошибок и порядок перехватчиков RPC |
 | `taskservice` | сквозная HTTP-служба, конфигурация сервера, `database/sql`, контекст, журналирование и мягкое завершение |
@@ -53,3 +53,31 @@ go tool pprof -sample_index=alloc_space memory.pprof
 `BenchmarkRetainedBlocks`, во втором — накопленные временные выделения
 `BenchmarkTemporaryBlocks`. Точные числа зависят от выборки. Файл профиля и
 созданный для его чтения тестовый исполняемый файл не добавляются в репозиторий.
+
+Сравнительный сценарий для `GOGC` и `GOMEMLIMIT`:
+
+```bash
+GOGC=50  GOMEMLIMIT=512MiB go run ./cmd/gcmetrics -rounds=200
+GOGC=100 GOMEMLIMIT=512MiB go run ./cmd/gcmetrics -rounds=200
+GOGC=200 GOMEMLIMIT=512MiB go run ./cmd/gcmetrics -rounds=200
+```
+
+Команда печатает параметры запуска, длительность, число циклов, процессорное время
+сборщика, объём живой кучи и приближённые процентили пауз. Сравнивайте запуски на
+одной машине с одинаковыми параметрами нагрузки. Флаг `-reuse` включает вариант,
+который выполняет те же записи, но повторно использует блоки между раундами:
+
+```bash
+GOGC=100 GOMEMLIMIT=512MiB go run ./cmd/gcmetrics -rounds=200
+GOGC=100 GOMEMLIMIT=512MiB go run ./cmd/gcmetrics -rounds=200 -reuse
+```
+
+Совпадение контрольной суммы подтверждает одинаковую полезную работу. Сравните
+`alloc_bytes`, число автоматических циклов, процессорное время и длительность.
+Для профиля мест выделения:
+
+```bash
+go test ./runtimeinfo -run '^$' -bench '^BenchmarkGCWorkload$' \
+  -benchmem -memprofile gc.pprof
+go tool pprof -sample_index=alloc_space gc.pprof
+```

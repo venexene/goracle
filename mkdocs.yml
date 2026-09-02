@@ -154,8 +154,11 @@ nav:
           - Выравнивание структур: go-fundamentals/Память в Go/Выравнивание/alignment.md
           - Версионный справочник: go-fundamentals/Память в Go/runtime-reference.md
       - Сборщик мусора:
-          - Модель и диагностика: go-fundamentals/Сбощик мусора в Go/garbage-collector.md
-          - Устройство Go 1.27: go-fundamentals/Сбощик мусора в Go/runtime-reference.md
+          - Учебный маршрут: go-fundamentals/Сборщик мусора в Go/garbage-collector.md
+          - Фазы и барьер записи: go-fundamentals/Сборщик мусора в Go/phases-and-barrier.md
+          - Настройка и диагностика: go-fundamentals/Сборщик мусора в Go/diagnostics.md
+          - Green Tea в Go 1.27: go-fundamentals/Сборщик мусора в Go/green-tea.md
+          - Версионный справочник: go-fundamentals/Сборщик мусора в Go/runtime-reference.md
   - О проекте:
       - Стандарт материала: project/content-standard.md
       - Лист рецензирования: project/review-checklist.md
