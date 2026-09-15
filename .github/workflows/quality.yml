@@ -1,4 +1,4 @@
-name: Проверка качества
+name: Quality Checks
 
 on:
   push:
