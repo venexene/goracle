@@ -18,6 +18,13 @@ LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 NAV = re.compile(r"^\s*-\s+[^:]+:\s+([^#'\"{}][^#]*)$")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 EXPLICIT_ID = re.compile(r"\bid=[\"']([^\"']+)[\"']")
+FUNDAMENTALS = DOCS / "go-fundamentals"
+FUNDAMENTALS_ROUTES = {
+    FUNDAMENTALS / "Компиляция и оптимизации Go" / "compilation.md",
+    FUNDAMENTALS / "Планировщик Go" / "scheduler.md",
+    FUNDAMENTALS / "Память в Go" / "memory.md",
+    FUNDAMENTALS / "Сборщик мусора в Go" / "garbage-collector.md",
+}
 
 
 def local_target(source: Path, raw: str) -> Path | None:
@@ -69,6 +76,54 @@ def main() -> int:
     for path in markdown:
         text = path.read_text(encoding="utf-8")
         relative = path.relative_to(ROOT)
+
+        if path == FUNDAMENTALS or FUNDAMENTALS in path.parents:
+            if "**Уровень:**" in text:
+                errors.append(f"{relative}: в статье указана аудитория или уровень")
+
+            first_section = text.find("\n## ")
+            upper = text[:first_section] if first_section != -1 else text
+            if first_section == -1 or first_section == 0 or text[first_section - 1] != "\n":
+                errors.append(f"{relative}: после верхнего блока нужна пустая строка")
+            upper_fields = [
+                "**Проверено:**",
+                "**Перед чтением:**",
+                "**После чтения:**",
+                "**Практика:**",
+            ]
+            positions = [upper.find(field) for field in upper_fields]
+            if any(position == -1 for position in positions):
+                errors.append(f"{relative}: неполный верхний блок")
+            elif positions != sorted(positions):
+                errors.append(f"{relative}: нарушен порядок полей верхнего блока")
+            if "practice.md" not in upper:
+                errors.append(f"{relative}: верхний блок не ведёт в общий практикум")
+
+            lower_sections = ["Краткий итог", "Продолжение", "Источники"]
+            lower_positions = [text.find(f"\n## {section}\n") for section in lower_sections]
+            if any(position == -1 for position in lower_positions):
+                errors.append(f"{relative}: неполный нижний блок")
+            elif lower_positions != sorted(lower_positions):
+                errors.append(f"{relative}: нарушен порядок разделов нижнего блока")
+            h2 = re.findall(r"^## (.+)$", text, re.MULTILINE)
+            for section in lower_sections:
+                if h2.count(section) > 1:
+                    errors.append(f"{relative}: раздел «{section}» указан несколько раз")
+            if h2 and h2[-1] != "Источники":
+                errors.append(f"{relative}: последний раздел должен называться «Источники»")
+            if re.search(r"^## (?:Практика|Практические задания|Самопроверка)$", text, re.MULTILINE):
+                errors.append(f"{relative}: задания должны находиться в общем практикуме")
+
+            if re.search(r"^#{2,4} \d+\. ", text, re.MULTILINE):
+                errors.append(f"{relative}: заголовки не должны нумероваться вручную")
+
+            if path in FUNDAMENTALS_ROUTES:
+                route_sections = ["О разделе", "Материалы", "Рекомендуемый порядок"]
+                route_positions = [text.find(f"\n## {section}\n") for section in route_sections]
+                if any(position == -1 for position in route_positions):
+                    errors.append(f"{relative}: неполная структура учебного маршрута")
+                elif h2[:3] != route_sections:
+                    errors.append(f"{relative}: маршрут должен начинаться с единых разделов")
 
         fences = sum(line.lstrip().startswith("```") for line in text.splitlines())
         if fences % 2:
